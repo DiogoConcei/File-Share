@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 import fse from "fs-extra";
 
-const SERVER_IP = "192.168.0.10"; // IP do servidor
+const SERVER_IP = "192.168.1.5"; // IP do servidor
 const outputFile = "./data_copiada.7z";
 
 const socket = io(`http://${SERVER_IP}:3000`);
@@ -15,7 +15,7 @@ socket.on("connect", () => {
   console.log("[CLIENT] Conectado ao servidor:", socket.id);
 });
 
-socket.on("file-chunk", ({ data, sentBytes, totalBytes: total }) => {
+socket.on("file-chunk", ({ data, sentBytes, totalBytes: total }, ack) => {
   if (!totalBytes) totalBytes = total;
 
   receivedBytes += data.length;
@@ -24,7 +24,9 @@ socket.on("file-chunk", ({ data, sentBytes, totalBytes: total }) => {
 
   console.log(`[CLIENT] Recebendo chunk ${data.length} bytes | ${percent}%`);
 
-  writeStream.write(data);
+  writeStream.write(data, () => {
+    ack();
+  });
 });
 
 socket.on("file-end", () => {

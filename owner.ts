@@ -6,8 +6,8 @@ import crypto from "crypto";
 const httpServer = createServer();
 const io = new Server(httpServer, { cors: { origin: "*" } });
 
-const inputFile = "./dataTeste.7z";
-const CHUNK_SIZE = 4096 * 1024; // 256KB
+const inputFile = "./dataTeste.jpg";
+const CHUNK_SIZE = 2048 * 1024; // 64KB
 
 io.on("connection", (socket) => {
   console.log("[SERVER] Cliente conectado:", socket.id);
@@ -23,6 +23,7 @@ io.on("connection", (socket) => {
   });
 
   readStream.on("data", (chunk) => {
+    readStream.pause();
     sentBytes += chunk.length;
 
     const percent = ((sentBytes / totalBytes) * 100).toFixed(2);
@@ -32,12 +33,18 @@ io.on("connection", (socket) => {
 
     console.log(`[SERVER] Enviando chunk ${chunk.length} bytes | ${percent}%`);
 
-    socket.emit("file-chunk", {
-      hash: hash.digest("hex"),
-      data: chunk,
-      sentBytes,
-      totalBytes,
-    });
+    socket.emit(
+      "file-chunk",
+      {
+        hash: hash.digest("hex"),
+        data: chunk,
+        sentBytes,
+        totalBytes,
+      },
+      () => {
+        readStream.resume();
+      }
+    );
   });
 
   readStream.on("end", () => {
