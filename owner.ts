@@ -1,38 +1,43 @@
 import { createServer } from "http";
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
 import fse from "fs-extra";
 import crypto from "crypto";
 
 const httpServer = createServer();
-const io = new Server(httpServer, { cors: { origin: "*" } });
+const io = new Server(httpServer, {
+  cors: { origin: "*" },
+});
+
 const inputFile = "./dataTeste.7z";
-const chunk_size = 4096 * 1024; // 256KB POR CHUNK
+const CHUNK_SIZE = 4096 * 1024;
 
-io.on("connection", (socket: Socket) => {
-  console.log("Cliente conectado: ", socket.id);
-
-  socket.on("ping", (msg) => {
-    console.log("Recebi do cliente: ", msg);
-    socket.emit("pong", "pong do servidor");
-  });
-
-  socket.on("disconnect", () => {
-    console.log("Cliente desconectado");
-  });
+io.on("connection", (socket) => {
+  console.log("Cliente conectado:", socket.id);
 
   const readStream = fse.createReadStream(inputFile, {
-    highWaterMark: chunk_size,
+    highWaterMark: CHUNK_SIZE,
   });
 
   readStream.on("data", (chunk) => {
     const hash = crypto.createHash("sha256");
     hash.update(chunk);
-    console.log("Transmitindo dados");
 
-    socket.emit("file-chunk", { hash: hash.digest("hex"), data: chunk });
+    socket.emit("file-chunk", {
+      hash: hash.digest("hex"),
+      data: chunk,
+    });
+  });
+
+  readStream.on("end", () => {
+    socket.emit("file-end");
+    console.log("Arquivo enviado por completo");
   });
 });
 
-httpServer.listen(3000, () => {
-  console.log("Servidor socket.io rodando na porta 3000");
+/**
+ * 🔴 IMPORTANTE:
+ * Escutar em 0.0.0.0 = todas as interfaces de rede
+ */
+httpServer.listen(3000, "0.0.0.0", () => {
+  console.log("Servidor rodando na porta 3000");
 });

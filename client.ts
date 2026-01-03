@@ -1,26 +1,26 @@
 import { io } from "socket.io-client";
 import fse from "fs-extra";
 
+const SERVER_IP = "192.168.0.10"; // 👈 IP DA MÁQUINA DO SERVIDOR
 const outputFile = "./data_copiada.7z";
 
-const socket = io("http://localhost:3000");
+const socket = io(`http://${SERVER_IP}:3000`);
+
+const writeStream = fse.createWriteStream(outputFile);
 
 socket.on("connect", () => {
-  console.log("Conectado ao servidor com id:", socket.id);
-
-  socket.emit("ping", "ping do cliente");
+  console.log("Conectado ao servidor:", socket.id);
 });
 
-socket.on("pong", (msg) => {
-  console.log("Recebi do servidor:", msg);
+socket.on("file-chunk", ({ data }) => {
+  writeStream.write(data);
+});
+
+socket.on("file-end", () => {
+  writeStream.end();
+  console.log("Arquivo recebido por completo");
 });
 
 socket.on("disconnect", () => {
-  console.log("Desconectado do servidor");
-});
-
-socket.on("file-chunk", ({ hash, data }) => {
-  console.log("Recebendo dados");
-  const writeStream = fse.createWriteStream(outputFile);
-  writeStream.write(data);
+  console.log("Desconectado");
 });
