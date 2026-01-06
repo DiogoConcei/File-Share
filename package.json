@@ -1,0 +1,20 @@
+{
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "@types/fs-extra": "^11.0.4",
+    "crypto": "^1.0.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "fs-extra": "^11.3.3",
+    "ulid": "^3.0.2"
+  },
+  "scripts": {
+    "dev": "nodemon --exec npx tsx main.ts"
+  },
+  "devDependencies": {
+    "@types/multer": "^2.0.0",
+    "@types/nodemon": "^1.19.6",
+    "multer": "^2.0.2",
+    "nodemon": "^3.1.11"
+  }
+}
