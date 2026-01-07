@@ -1,13 +1,7 @@
 import dgram from "dgram";
+import { PeerInfo } from "./interfaces";
 import { EventEmitter } from "events";
 import crypto from "crypto";
-
-type PeerInfo = {
-  id: string;
-  address: string;
-  port: string;
-  lastSeen: number;
-};
 
 export default class DiscoveryService extends EventEmitter {
   private readonly multicastGroup = "239.255.0.1";
