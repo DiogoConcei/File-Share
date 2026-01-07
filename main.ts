@@ -1,21 +1,25 @@
 import dotenv from "dotenv";
-import axios from "axios";
-import { PeerInfo } from "./interfaces";
+import { modelFile, PeerInfo } from "./interfaces";
 
 import DiscoveryService from "./DiscoveryService";
 import FileHttpApi from "./FileHttpApi";
+import PeerApi from "./PeerApi";
 
 dotenv.config({ path: "./.env" });
+const port = Number(process.env.PORT);
 
-const discovery = new DiscoveryService(Number(process.env.PORT));
-
-const httpApi = new FileHttpApi(Number(process.env.PORT), "./dataTeste.json");
+const discovery = new DiscoveryService(port);
+const httpApi = new FileHttpApi(port, "./json/dataTeste.json");
+const peerApi = new PeerApi();
 
 discovery.on("peer:discovered", async (peer: PeerInfo) => {
   console.log("Peer encontrado:", peer.id);
 
-  const response = await axios.get(`http://${peer.address}:${peer.port}/`);
-  console.log(response.data);
+  const files: modelFile[] = await peerApi.fetchFiles(peer.address, peer.port);
+
+  for (let idx = 0; idx < files.length; idx++) {
+    console.log(`Nome do arquivo: ${files[idx].name}`);
+  }
 });
 
 discovery.on("error", console.error);

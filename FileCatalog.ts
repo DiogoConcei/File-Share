@@ -1,4 +1,4 @@
-import modelFile from "./files.interfaces";
+import { modelFile } from "./interfaces";
 import crypto from "crypto";
 import fse from "fs-extra";
 import path from "path";
