@@ -11,10 +11,11 @@ const discovery = new DiscoveryService(Number(process.env.PORT));
 
 const httpApi = new FileHttpApi(Number(process.env.PORT), "./dataTeste.json");
 
-discovery.on("peer:discovered", (peer: PeerInfo) => {
+discovery.on("peer:discovered", async (peer: PeerInfo) => {
   console.log("Peer encontrado:", peer.id);
 
-  axios.get(`${peer.address}:${peer.port}`);
+  const response = await axios.get(`http://${peer.address}:${peer.port}/`);
+  console.log(response.data);
 });
 
 discovery.on("error", console.error);
