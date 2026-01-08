@@ -1,6 +1,7 @@
 export interface modelFile {
   fileId: string;
   name: string;
+  ext: string;
   path: string;
   hash: string;
   size: number;
@@ -14,4 +15,10 @@ export interface PeerInfo {
   address: string;
   port: string;
   lastSeen: number;
+}
+
+export interface compareData {
+  inPeer: modelFile[];
+  inServer: modelFile[];
+  sync: modelFile[];
 }

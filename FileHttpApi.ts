@@ -33,7 +33,7 @@ export default class FileHttpApi {
       }
     });
 
-    this.app.get("/:filename/:ulid/download", async (req, res) => {
+    this.app.get("/:ulid/download", async (req, res) => {
       const data = await fse.readJson(this.dataDir, { encoding: "utf8" });
       const file = data.find((f: any) => f.fileId === req.params.ulid);
 

@@ -3,9 +3,11 @@ import crypto from "crypto";
 import fse from "fs-extra";
 import path from "path";
 import { ulid } from "ulid";
+import { Readable } from "stream";
 
 export default class FileCatalog {
   private readonly baseDir = path.join(__dirname, "localFiles");
+  private readonly dataDir = path.join(__dirname, "json", "dataTeste.json");
 
   private async hashFile(filePath: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -25,35 +27,71 @@ export default class FileCatalog {
     });
   }
 
-  public async validFiles(): Promise<void> {
-    let temp: modelFile[] = [];
+  public async indexDirectory(): Promise<void> {
+    try {
+      const rawEntries = await fse.readdir(this.baseDir, {
+        withFileTypes: true,
+      });
+      const fileEntries = rawEntries.filter(
+        (e) => e.isFile() && /\.(cbz|cbr|zip|rar)$/i.test(e.name)
+      );
 
-    const entries = (await fse.readdir(this.baseDir, { withFileTypes: true }))
-      .filter((e) => e.isFile() && /\.(cbz|cbr|zip|rar)$/i.test(e.name))
-      .map((e) => path.join(e.parentPath, e.name));
+      const processedFiles: modelFile[] = await Promise.all(
+        fileEntries.map(async (entry) => {
+          const fullPath = path.join(entry.parentPath, entry.name);
 
-    const results = await Promise.all(
-      entries.map(async (file) => {
-        const hash = await this.hashFile(file);
-        return hash;
-      })
-    );
+          const [fileHash, fileStats] = await Promise.all([
+            this.hashFile(fullPath),
+            fse.stat(fullPath),
+          ]);
 
-    for (let idx = 0; idx < entries.length; idx++) {
-      const modelFile: modelFile = {
-        fileId: ulid(),
-        name: path.basename(entries[idx], path.extname(entries[idx])),
-        hash: results[idx],
-        path: entries[idx],
-        isDownloaded: "not_downloaded",
-        isSync: "unsynchronized",
-        privacy: "public",
-        size: (await fse.stat(entries[idx])).size, // size in bytes
-      };
+          return {
+            fileId: ulid(),
+            name: path.basename(entry.name, path.extname(entry.name)),
+            ext: path.extname(entry.name),
+            hash: fileHash,
+            path: fullPath,
+            isDownloaded: "not_downloaded",
+            isSync: "unsynchronized",
+            privacy: "public",
+            size: fileStats.size,
+          };
+        })
+      );
 
-      temp.push(modelFile);
+      await fse.writeJson(this.dataDir, processedFiles, {
+        spaces: 2,
+      });
+    } catch (e) {
+      console.error(`Falha em atualizar metadata: `, e);
+      throw new String(e);
     }
+  }
 
-    await fse.writeJson("./dataTeste.json", temp, { spaces: 2 });
+  public async getData(): Promise<modelFile[]> {
+    try {
+      const jsonData: modelFile[] = await fse.readJson(this.baseDir);
+
+      if (jsonData.length === 0) return [];
+
+      return jsonData;
+    } catch (e) {
+      console.error(`Falha em recuperar dados: `, e);
+      return [];
+    }
+  }
+
+  public async saveStream(stream: Readable, fileName: string): Promise<void> {
+    const filePath = path.join(this.baseDir, fileName);
+
+    return new Promise((resolve, reject) => {
+      const wStream = fse.createWriteStream(filePath);
+
+      stream.pipe(wStream);
+
+      wStream.on("finish", resolve);
+      wStream.on("error", reject);
+      stream.on("error", reject);
+    });
   }
 }

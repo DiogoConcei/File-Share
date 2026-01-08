@@ -10,15 +10,21 @@ const port = Number(process.env.PORT);
 
 const discovery = new DiscoveryService(port);
 const httpApi = new FileHttpApi(port, "./json/dataTeste.json");
-const peerApi = new PeerApi();
 
 discovery.on("peer:discovered", async (peer: PeerInfo) => {
   console.log("Peer encontrado:", peer.id);
+  const peerApi = new PeerApi(peer.address, peer.port);
 
-  const files: modelFile[] = await peerApi.fetchFiles(peer.address, peer.port);
+  const files = await peerApi.compareData();
+  const { inServer, inPeer, sync } = files;
 
-  for (let idx = 0; idx < files.length; idx++) {
-    console.log(`Nome do arquivo: ${files[idx].name}`);
+  if (inServer.length !== 0) {
+    await Promise.all(
+      inServer.map(async (serverFile) => {
+        const fileName = serverFile.name.concat(serverFile.ext);
+        await peerApi.peerSync(serverFile.fileId, fileName);
+      })
+    );
   }
 });
 
