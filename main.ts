@@ -9,7 +9,7 @@ dotenv.config({ path: "./.env" });
 const port = Number(process.env.PORT);
 
 const discovery = new DiscoveryService(port);
-const httpApi = new FileHttpApi(port, "./json/dataTeste.json");
+const httpApi = new FileHttpApi(port, "./data/dataTeste.json");
 
 discovery.on("peer:discovered", async (peer: PeerInfo) => {
   console.log("Peer encontrado:", peer.id);

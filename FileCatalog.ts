@@ -95,7 +95,4 @@ export default class FileCatalog {
       stream.on("error", reject);
     });
   }
-
-  // o id tem que persistir
-  // tem que atualizar o dataTeste.json
 }
