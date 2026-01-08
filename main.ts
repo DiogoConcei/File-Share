@@ -18,11 +18,13 @@ discovery.on("peer:discovered", async (peer: PeerInfo) => {
   const files = await peerApi.compareData();
   const { inServer, inPeer, sync } = files;
 
-  if (inServer.length !== 0) {
+  console.log(`Arquivos do peer: ${inPeer.length}`);
+
+  if (inPeer.length !== 0) {
     await Promise.all(
-      inServer.map(async (serverFile) => {
-        const fileName = serverFile.name.concat(serverFile.ext);
-        await peerApi.peerSync(serverFile.fileId, fileName);
+      inPeer.map(async (peerFile) => {
+        const fileName = peerFile.name.concat(peerFile.ext);
+        await peerApi.peerSync(peerFile.fileId, fileName);
       })
     );
   }

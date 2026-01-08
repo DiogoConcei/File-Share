@@ -14,12 +14,9 @@ export default class PeerApi {
     this.port = port;
   }
 
-  private async fetchPeerFiles(
-    address: string,
-    port: string
-  ): Promise<modelFile[]> {
+  public async fetchPeerFiles(): Promise<modelFile[]> {
     try {
-      const url = `http://${address}:${port}/`;
+      const url = `http://${this.address}:${this.port}/`;
 
       const response = await axios.get<modelFile[]>(url);
 
@@ -34,7 +31,7 @@ export default class PeerApi {
 
   public async compareData(): Promise<compareData> {
     try {
-      const peerData = await this.fetchPeerFiles(this.address, this.port);
+      const peerData = await this.fetchPeerFiles();
       const serverData = await this.fileCatalog.getData();
 
       // Maps para acesso O(1) por fileId e para garantir unicidade por id
@@ -93,7 +90,8 @@ export default class PeerApi {
 
       const stream = response.data;
 
-      await this.fileCatalog.saveStream(stream, fileId);
+      await this.fileCatalog.saveStream(stream, fileName);
+      await this.fileCatalog.indexDirectory();
     } catch (e) {
       console.log(`Falha em ler arquivos`);
       return [];

@@ -7,7 +7,7 @@ import { Readable } from "stream";
 
 export default class FileCatalog {
   private readonly baseDir = path.join(__dirname, "localFiles");
-  private readonly dataDir = path.join(__dirname, "json", "dataTeste.json");
+  private readonly dataDir = path.join(__dirname, "data", "dataTeste.json");
 
   private async hashFile(filePath: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -70,7 +70,7 @@ export default class FileCatalog {
 
   public async getData(): Promise<modelFile[]> {
     try {
-      const jsonData: modelFile[] = await fse.readJson(this.baseDir);
+      const jsonData: modelFile[] = await fse.readJson(this.dataDir);
 
       if (jsonData.length === 0) return [];
 
@@ -83,6 +83,7 @@ export default class FileCatalog {
 
   public async saveStream(stream: Readable, fileName: string): Promise<void> {
     const filePath = path.join(this.baseDir, fileName);
+    console.log(filePath);
 
     return new Promise((resolve, reject) => {
       const wStream = fse.createWriteStream(filePath);
@@ -94,4 +95,7 @@ export default class FileCatalog {
       stream.on("error", reject);
     });
   }
+
+  // o id tem que persistir
+  // tem que atualizar o dataTeste.json
 }
