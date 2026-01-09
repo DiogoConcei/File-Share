@@ -1,4 +1,4 @@
-export interface modelFile {
+export interface FileMetadata {
   fileId: string;
   name: string;
   ext: string;
@@ -17,8 +17,8 @@ export interface PeerInfo {
   lastSeen: number;
 }
 
-export interface compareData {
-  inPeer: modelFile[];
-  inServer: modelFile[];
-  sync: modelFile[];
+export interface DiffData {
+  inPeer: FileMetadata[];
+  inServer: FileMetadata[];
+  sync: FileMetadata[];
 }

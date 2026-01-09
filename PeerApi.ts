@@ -1,5 +1,4 @@
 import axios from "axios";
-import fse from "fs-extra";
 import FileCatalog from "./FileCatalog";
 import { Readable } from "stream";
 import { modelFile, compareData } from "./interfaces";
@@ -111,5 +110,3 @@ export default class PeerApi {
     }
   }
 }
-
-// Salvar todos os arquivos com hash diferente

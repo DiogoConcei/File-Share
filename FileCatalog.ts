@@ -1,119 +1,107 @@
-import { modelFile } from "./interfaces";
-import crypto from "crypto";
-import fse from "fs-extra";
-import { pipeline } from "node:stream/promises";
-import path from "path";
+import { FileMetadata } from "./interfaces";
+
+import { EventEmitter } from "events";
 import { ulid } from "ulid";
-import { Readable } from "stream";
+import crypto from "crypto";
+import chokidar from "chokidar";
+import path from "path";
+import fse from "fs-extra";
+import PLimit from "p-limit";
 
-export default class FileCatalog {
-  private readonly baseDir = path.join(__dirname, "localFiles");
-  private readonly dataDir = path.join(__dirname, "data", "dataTeste.json");
+export default class FileCatalog extends EventEmitter {
+  private readonly baseDir = path.join(__dirname, "files");
+  private readonly dataFile = path.join(__dirname, "files-metadata.json");
+  private index = new Map<string, any>(); // fileId -> metadata
+  private hashIndex = new Map<string, string>(); // hash -> fileId
+  private limitHash = PLimit(5);
 
-  // Retorna o hash
+  async start() {
+    await this.loadIndex();
+    this.startWatching();
+  }
+
+  private async loadIndex() {
+    try {
+      const arr: FileMetadata[] = await fse.readJson(this.dataFile);
+
+      for (const f of arr) {
+        this.index.set(f.fileId, f);
+        this.hashIndex.set(f.hash, f.fileId);
+      }
+    } catch (e) {
+      await this.persistIndex();
+    }
+  }
+
+  private async persistIndex() {
+    await fse.writeJson(this.dataFile + ".tmp", [...this.index.values()], {
+      spaces: 2,
+    });
+    await fse.move(this.dataFile + ".tmp", this.dataFile, { overwrite: true });
+  }
+
+  private startWatching() {
+    const watcher = chokidar.watch(this.baseDir, {
+      ignoreInitial: true,
+      persistent: true,
+      awaitWriteFinish: { stabilityThreshold: 1500, pollInterval: 100 },
+      ignored: ["**/.inprogress/**"],
+    });
+
+    watcher.on("add", (p) => this.onAdd(p));
+  }
+
+  private async onAdd(filePath: string) {
+    const fileMeta = await this.limitHash(() => this.registerFile(filePath));
+    if (fileMeta) {
+      this.emit("file:added", fileMeta);
+    }
+  }
+
+  private async registerFile(filePath: string) {
+    if (!/\.(cbz|cbr|zip|pdf|epub)$/i.test(filePath)) return null;
+
+    const [hash, stat] = await Promise.all([
+      this.hashFile(filePath),
+      fse.stat(filePath),
+    ]);
+
+    if (this.hashIndex.has(hash)) {
+      const existingId = this.hashIndex.get(hash)!;
+      const existing = this.index.get(existingId);
+      if (existing.path !== filePath) {
+        existing.path = filePath;
+        await this.persistIndex();
+      }
+      return existing;
+    }
+
+    const meta = {
+      fileId: ulid(),
+      name: path.basename(filePath, path.extname(filePath)),
+      ext: path.extname(filePath),
+      hash,
+      path: filePath,
+      isDownloaded: "not_downloaded",
+      isSync: "unsynchronized",
+      privacy: "public",
+      size: stat.size,
+    };
+
+    this.index.set(meta.fileId, meta);
+    this.hashIndex.set(hash, meta.fileId);
+    await this.persistIndex();
+
+    return meta;
+  }
+
   private async hashFile(filePath: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const hash = crypto.createHash("sha256");
       const rs = fse.createReadStream(filePath);
-
-      rs.on("data", (chunk) => hash.update(chunk));
-
-      rs.on("end", () => {
-        const digest = hash.digest("hex");
-        resolve(digest);
-      });
-
-      rs.on("error", (err) => {
-        reject(err);
-      });
+      rs.on("data", (c) => hash.update(c));
+      rs.on("end", () => resolve(hash.digest("hex")));
+      rs.on("error", reject);
     });
-  }
-
-  public async indexDirectory(): Promise<void> {
-    try {
-      const rawEntries = await fse.readdir(this.baseDir, {
-        withFileTypes: true,
-      });
-      const fileEntries = rawEntries.filter(
-        (e) => e.isFile() && /\.(cbz|cbr|zip|rar)$/i.test(e.name)
-      );
-
-      const processedFiles: modelFile[] = await Promise.all(
-        fileEntries.map(async (entry) => {
-          const fullPath = path.join(entry.parentPath, entry.name);
-
-          const [fileHash, fileStats] = await Promise.all([
-            this.hashFile(fullPath),
-            fse.stat(fullPath),
-          ]);
-
-          return {
-            fileId: ulid(),
-            name: path.basename(entry.name, path.extname(entry.name)),
-            ext: path.extname(entry.name),
-            hash: fileHash,
-            path: fullPath,
-            isDownloaded: "not_downloaded",
-            isSync: "unsynchronized",
-            privacy: "public",
-            size: fileStats.size,
-          };
-        })
-      );
-
-      await fse.writeJson(this.dataDir, processedFiles, {
-        spaces: 2,
-      });
-    } catch (e) {
-      console.error(`Falha em atualizar metadata: `, e);
-      throw new String(e);
-    }
-  }
-
-  public async checkHash(fileHash: string, newPath: string): Promise<boolean> {
-    try {
-      const calcHash = await this.hashFile(newPath);
-      if (fileHash !== calcHash) return false;
-      return true;
-    } catch (e) {
-      console.error(`Falha em verificar integridade do arquivo: `, e);
-      return false;
-    }
-  }
-
-  public async indexFile(filePath: string, peerFile: modelFile) {
-    const data = await this.getData();
-
-    const newFile: modelFile = {
-      ...peerFile,
-      path: filePath,
-      isDownloaded: "downloaded",
-      isSync: "synchronized",
-    };
-
-    data.push(newFile);
-
-    await fse.writeJson(this.dataDir, data, {
-      spaces: 2,
-    });
-  }
-
-  public async getData(): Promise<modelFile[]> {
-    try {
-      const jsonData: modelFile[] = await fse.readJson(this.dataDir);
-
-      if (jsonData.length === 0) return [];
-
-      return jsonData;
-    } catch (e) {
-      console.error(`Falha em recuperar dados: `, e);
-      return [];
-    }
-  }
-
-  public async saveStream(stream: Readable, fileName: string) {
-    const filePath = path.join(this.baseDir, fileName);
-    await pipeline(stream, fse.createWriteStream(filePath));
-    return filePath;
   }
 }
