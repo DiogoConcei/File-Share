@@ -80,9 +80,11 @@ export default class PeerApi {
     }
   }
 
-  public async peerSync(fileId: string, fileName: string) {
+  public async peerSync(peerFile: modelFile) {
     try {
-      const url = `http://${this.address}:${this.port}/${fileId}/download`;
+      const fileName = peerFile.name.concat(peerFile.ext);
+
+      const url = `http://${this.address}:${this.port}/${peerFile.fileId}/download`;
 
       const response = await axios.get<Readable>(url, {
         responseType: "stream",
@@ -90,8 +92,19 @@ export default class PeerApi {
 
       const stream = response.data;
 
-      await this.fileCatalog.saveStream(stream, fileName);
-      await this.fileCatalog.indexDirectory();
+      const filePath = await this.fileCatalog.saveStream(stream, fileName);
+
+      const sameHash = await this.fileCatalog.checkHash(
+        peerFile.hash,
+        filePath
+      );
+
+      if (!sameHash) {
+        console.log("Processo finalizado devido a conflito entre hash");
+        return;
+      }
+
+      await this.fileCatalog.indexFile(filePath, peerFile);
     } catch (e) {
       console.log(`Falha em ler arquivos`);
       return [];

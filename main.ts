@@ -19,15 +19,21 @@ discovery.on("peer:discovered", async (peer: PeerInfo) => {
   const { inServer, inPeer, sync } = files;
 
   console.log(`Arquivos do peer: ${inPeer.length}`);
+  console.log(`Arquivos do server: ${inServer.length}`);
+  console.log(`Arquivos syncronizados: ${sync.length}`);
 
+  // Arquivos do peer
   if (inPeer.length !== 0) {
     await Promise.all(
       inPeer.map(async (peerFile) => {
-        const fileName = peerFile.name.concat(peerFile.ext);
-        await peerApi.peerSync(peerFile.fileId, fileName);
+        await peerApi.peerSync(peerFile);
       })
     );
   }
+
+  // Arquivos do server
+
+  // Verificar hash, se diferente, sincronizar
 });
 
 discovery.on("error", console.error);

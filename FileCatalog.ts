@@ -1,6 +1,7 @@
 import { modelFile } from "./interfaces";
 import crypto from "crypto";
 import fse from "fs-extra";
+import { pipeline } from "node:stream/promises";
 import path from "path";
 import { ulid } from "ulid";
 import { Readable } from "stream";
@@ -9,6 +10,7 @@ export default class FileCatalog {
   private readonly baseDir = path.join(__dirname, "localFiles");
   private readonly dataDir = path.join(__dirname, "data", "dataTeste.json");
 
+  // Retorna o hash
   private async hashFile(filePath: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const hash = crypto.createHash("sha256");
@@ -68,6 +70,34 @@ export default class FileCatalog {
     }
   }
 
+  public async checkHash(fileHash: string, newPath: string): Promise<boolean> {
+    try {
+      const calcHash = await this.hashFile(newPath);
+      if (fileHash !== calcHash) return false;
+      return true;
+    } catch (e) {
+      console.error(`Falha em verificar integridade do arquivo: `, e);
+      return false;
+    }
+  }
+
+  public async indexFile(filePath: string, peerFile: modelFile) {
+    const data = await this.getData();
+
+    const newFile: modelFile = {
+      ...peerFile,
+      path: filePath,
+      isDownloaded: "downloaded",
+      isSync: "synchronized",
+    };
+
+    data.push(newFile);
+
+    await fse.writeJson(this.dataDir, data, {
+      spaces: 2,
+    });
+  }
+
   public async getData(): Promise<modelFile[]> {
     try {
       const jsonData: modelFile[] = await fse.readJson(this.dataDir);
@@ -81,18 +111,9 @@ export default class FileCatalog {
     }
   }
 
-  public async saveStream(stream: Readable, fileName: string): Promise<void> {
+  public async saveStream(stream: Readable, fileName: string) {
     const filePath = path.join(this.baseDir, fileName);
-    console.log(filePath);
-
-    return new Promise((resolve, reject) => {
-      const wStream = fse.createWriteStream(filePath);
-
-      stream.pipe(wStream);
-
-      wStream.on("finish", resolve);
-      wStream.on("error", reject);
-      stream.on("error", reject);
-    });
+    await pipeline(stream, fse.createWriteStream(filePath));
+    return filePath;
   }
 }
