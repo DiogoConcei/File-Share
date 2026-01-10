@@ -138,5 +138,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-localFiles
+files
 files-metadata.json
+sync-metadata.json

@@ -13,7 +13,7 @@ export default class DiscoveryService extends EventEmitter {
     reuseAddr: true,
   });
 
-  private readonly peers = new Map<string, PeerInfo>();
+  private readonly peers = new Map<string, PeerInfo>(); // id -> peer
   private announceTimer?: NodeJS.Timeout;
 
   constructor(port: number) {
@@ -44,7 +44,20 @@ export default class DiscoveryService extends EventEmitter {
 
     this.announceTimer = setInterval(() => {
       this.announce();
-    }, 5000);
+    }, 1000 * 5);
+
+    setInterval(() => {
+      const now = Date.now();
+      const second = 1000; // um segundo
+
+      this.peers.forEach((peer) => {
+        if (now - peer.lastSeen > second * 8) {
+          console.log(`Conexao perdida com o peer: ${peer.id}`);
+          this.peers.delete(peer.id);
+          this.emit("peer:lost", peer);
+        }
+      });
+    }, 1000 * 5);
   }
 
   stop() {

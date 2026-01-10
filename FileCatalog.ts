@@ -9,10 +9,11 @@ import fse from "fs-extra";
 import PLimit from "p-limit";
 
 export default class FileCatalog extends EventEmitter {
-  private readonly baseDir = path.join(__dirname, "files");
-  private readonly dataFile = path.join(__dirname, "files-metadata.json");
-  private index = new Map<string, any>(); // fileId -> metadata
+  private readonly baseDir = path.resolve(__dirname, "files");
+  private readonly dataFile = path.resolve(__dirname, "files-metadata.json");
+  private index = new Map<string, FileMetadata>(); // fileId -> metadata
   private hashIndex = new Map<string, string>(); // hash -> fileId
+  private pathIndex = new Map<string, string>(); // path -> fileId
   private limitHash = PLimit(5);
 
   async start() {
@@ -27,6 +28,7 @@ export default class FileCatalog extends EventEmitter {
       for (const f of arr) {
         this.index.set(f.fileId, f);
         this.hashIndex.set(f.hash, f.fileId);
+        this.pathIndex.set(f.path, f.fileId);
       }
     } catch (e) {
       await this.persistIndex();
@@ -49,6 +51,7 @@ export default class FileCatalog extends EventEmitter {
     });
 
     watcher.on("add", (p) => this.onAdd(p));
+    watcher.on("unlink", (p) => this.onRemove(p));
   }
 
   private async onAdd(filePath: string) {
@@ -58,9 +61,35 @@ export default class FileCatalog extends EventEmitter {
     }
   }
 
-  private async registerFile(filePath: string) {
-    if (!/\.(cbz|cbr|zip|pdf|epub)$/i.test(filePath)) return null;
+  private async onRemove(filePath: string) {
+    const fileMeta = await this.unlinkFile(filePath);
+    if (fileMeta) {
+      this.emit("file:removed", fileMeta);
+    }
+  }
 
+  private async unlinkFile(filePath: string): Promise<FileMetadata> {
+    const fileId = this.pathIndex.get(filePath);
+
+    if (!fileId) {
+      throw new Error(`Falha em encontrar o arquivo ${filePath}`);
+    }
+
+    const metadata = this.index.get(fileId);
+
+    if (!metadata) {
+      throw new Error(`Falha em encontrar os metadados do arquivo ${filePath}`);
+    }
+
+    this.index.delete(fileId);
+    this.hashIndex.delete(metadata.hash);
+    this.pathIndex.delete(filePath);
+    await this.persistIndex();
+
+    return metadata;
+  }
+
+  private async registerFile(filePath: string): Promise<FileMetadata> {
     const [hash, stat] = await Promise.all([
       this.hashFile(filePath),
       fse.stat(filePath),
@@ -69,14 +98,20 @@ export default class FileCatalog extends EventEmitter {
     if (this.hashIndex.has(hash)) {
       const existingId = this.hashIndex.get(hash)!;
       const existing = this.index.get(existingId);
+
+      if (!existing) {
+        throw new Error("Falha durante o calculo  de hash");
+      }
+
       if (existing.path !== filePath) {
         existing.path = filePath;
         await this.persistIndex();
       }
+
       return existing;
     }
 
-    const meta = {
+    const meta: FileMetadata = {
       fileId: ulid(),
       name: path.basename(filePath, path.extname(filePath)),
       ext: path.extname(filePath),
