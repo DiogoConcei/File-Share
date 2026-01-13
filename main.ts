@@ -15,43 +15,43 @@ async function main() {
 
   const identity = await IdentityManager.loadOrCreate();
 
-  const fileCatalog = new FileCatalog();
-  await fileCatalog.start();
+  // const fileCatalog = new FileCatalog();
+  // await fileCatalog.start();
 
   // As rotas precisam ser modificadas para corresponder a cada peer
-  const dataFile = path.resolve(__dirname, "json", "files-metadata.json");
-  const fileApi = new FileHttpApi(port, dataFile);
-  fileApi.start();
+  // const dataFile = path.resolve(__dirname, "json", "files-metadata.json");
+  // const fileApi = new FileHttpApi(port, dataFile);
+  // fileApi.start();
 
-  const syncManager = new SyncManager(identity.peerId);
-  syncManager.start();
+  // const syncManager = new SyncManager(identity.peerId);
+  // syncManager.start();
 
   const discovery = new DiscoveryService(port, identity);
   // acho que está faltando discovery.start()
 
-  discovery.on("peer:seen", (peer) => {
-    syncManager.emit("peer:seen", peer);
-  });
+  // discovery.on("peer:seen", (peer) => {
+  //   syncManager.emit("peer:seen", peer);
+  // });
 
   // Não acho que esse tipo de chamda é necessária, é tipo ativar a mesma lampada duas vezes
-  fileCatalog.on("file:added", (meta) => {
-    syncManager.emit("file:added", meta);
-  });
+  // fileCatalog.on("file:added", (meta) => {
+  //   syncManager.emit("file:added", meta);
+  // });
 
-  syncManager.on("peer:discovered", async (peer) => {
-    try {
-      console.log("Peer descoberto, sincronizando:", peer);
-      const api = new PeerApi(peer.address, peer.port);
-      const diff = await api.compareFiles();
-      // Baixar o que estiver somente no peer
-      for (const f of diff.inPeer) {
-        console.log("Baixando arquivo do peer:", f.fileId);
-        await api.peerSync(f);
-      }
-    } catch (err) {
-      console.error("Erro durante sync com peer:", err);
-    }
-  });
+  // syncManager.on("peer:discovered", async (peer) => {
+  //   try {
+  //     console.log("Peer descoberto, sincronizando:", peer);
+  //     const api = new PeerApi(peer.address, peer.port);
+  //     const diff = await api.compareFiles();
+
+  //     for (const f of diff.inPeer) {
+  //       console.log("Baixando arquivo do peer:", f.fileId);
+  //       await api.peerSync(f);
+  //     }
+  //   } catch (err) {
+  //     console.error("Erro durante sync com peer:", err);
+  //   }
+  // });
 
   discovery.start();
 

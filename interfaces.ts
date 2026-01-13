@@ -13,9 +13,17 @@ export interface FileMetadata {
 
 export interface PeerInfo {
   id: string;
+  displayName: string;
   address: string;
   port: number; // padronizado para number
   lastSeen: number;
+}
+
+export interface PeerMsg {
+  type: string;
+  peerId: string;
+  name: string;
+  timeStamp: number;
 }
 
 export interface DiffData {
@@ -32,7 +40,6 @@ export interface PeerIdentity {
 
 export interface PeerSyncPersist {
   id: string;
-  displayName: string;
   lastAddress: string;
   port: number;
   lastSeen: number;

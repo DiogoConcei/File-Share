@@ -1,5 +1,5 @@
 import dgram from "dgram";
-import { PeerInfo, PeerIdentity } from "./interfaces";
+import { PeerInfo, PeerIdentity, PeerMsg } from "./interfaces";
 import { EventEmitter } from "events";
 
 export default class DiscoveryService extends EventEmitter {
@@ -52,28 +52,28 @@ export default class DiscoveryService extends EventEmitter {
   }
 
   private announce() {
-    const payload = Buffer.from(
-      JSON.stringify({
-        type: "ANNOUNCE",
-        peerId: this.identity.peerId,
-        name: this.identity.displayName,
-        port: this.port,
-        timestamp: Date.now(),
-      })
-    );
+    const msg: PeerMsg = {
+      type: "ANNOUNCE",
+      peerId: this.identity.peerId,
+      name: this.identity.displayName,
+      timeStamp: Date.now(),
+    };
+
+    const payload = Buffer.from(JSON.stringify(msg));
 
     this.socket.send(payload, this.port, this.multicastGroup);
   }
 
   private handleMessage(msg: Buffer, rinfo: dgram.RemoteInfo) {
-    const data = JSON.parse(msg.toString());
+    const data: PeerMsg = JSON.parse(msg.toString());
 
     if (data.peerId === this.identity.peerId) return;
 
     const peer: PeerInfo = {
       id: data.peerId,
+      displayName: data.name,
       address: rinfo.address,
-      port: data.port,
+      port: rinfo.port,
       lastSeen: Date.now(),
     };
 

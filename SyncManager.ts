@@ -6,7 +6,6 @@ import {
   PeerSyncPersist,
 } from "./interfaces";
 import { EventEmitter } from "events";
-import os from "os";
 import path from "path";
 import fse from "fs-extra";
 
@@ -29,7 +28,7 @@ export default class SyncManager extends EventEmitter {
       this.peerSeen(peer);
     });
 
-    this.on("peer:discovered", () => {});
+    // this.on("peer:discovered", () => {});
 
     this.on("file:added", (fileMeta: FileMetadata) => {
       this.toSync(fileMeta);
@@ -56,7 +55,6 @@ export default class SyncManager extends EventEmitter {
     if (!persisted) {
       persisted = {
         id: peer.id,
-        displayName: os.hostname(),
         lastAddress: peer.address,
         port: peer.port,
         lastSeen: Date.now(),
