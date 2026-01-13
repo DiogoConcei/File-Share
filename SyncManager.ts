@@ -16,11 +16,10 @@ export default class SyncManager extends EventEmitter {
     "sync-metadata.json"
   );
   private readonly peers = new Map<string, PeerState>();
-  private readonly peerId: string;
+  private announceTimer?: NodeJS.Timeout;
 
-  constructor(peerId: string) {
+  constructor() {
     super();
-    this.peerId = peerId;
   }
 
   start() {
@@ -28,11 +27,24 @@ export default class SyncManager extends EventEmitter {
       this.peerSeen(peer);
     });
 
-    // this.on("peer:discovered", () => {});
-
     this.on("file:added", (fileMeta: FileMetadata) => {
-      this.toSync(fileMeta);
+      this.toSend(fileMeta);
     });
+
+    this.announceTimer = setInterval(() => {
+      this.checkPeer();
+    }, 1000 * 5);
+  }
+
+  private checkPeer() {
+    const timeStamp = Date.now();
+
+    for (const [peerId, peer] of this.peers) {
+      if (timeStamp - peer.info.lastSeen > 1000 * 15) {
+        this.peers.delete(peerId);
+        this.emit("peer:disconnected", peerId);
+      }
+    }
   }
 
   private peerSeen(peer: PeerInfo) {
@@ -55,6 +67,7 @@ export default class SyncManager extends EventEmitter {
     if (!persisted) {
       persisted = {
         id: peer.id,
+        displayName: peer.displayName,
         lastAddress: peer.address,
         port: peer.port,
         lastSeen: Date.now(),
@@ -123,12 +136,27 @@ export default class SyncManager extends EventEmitter {
     };
   }
 
-  private toSync(fileMeta: FileMetadata) {
-    console.log(
-      "Arquivo adicionado localmente, decidir estratégia de sync:",
-      fileMeta.fileId
-    );
+  private async toSend(fileMeta: FileMetadata) {
+    const syncState = await this.loadSyncData();
+
+    for (const [peerId, peerState] of this.peers) {
+      const persisted = syncState.peers[peerId];
+      if (!persisted) continue;
+
+      persisted.queue.toSend.push(fileMeta);
+
+      peerState.sync.queue.toSend.push(fileMeta);
+
+      this.emit("file:queued", {
+        peerId,
+        fileId: fileMeta.fileId,
+      });
+    }
+
+    await this.persistSyncData(syncState);
   }
 
-  stop() {}
+  stop() {
+    if (this.announceTimer) clearInterval(this.announceTimer);
+  }
 }

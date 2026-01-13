@@ -12,7 +12,11 @@ import PLimit from "p-limit";
 
 export default class FileCatalog extends EventEmitter {
   private readonly baseDir = path.resolve(__dirname, "files");
-  private readonly dataFile = path.resolve(__dirname, "files-metadata.json");
+  private readonly dataFile = path.resolve(
+    __dirname,
+    "json",
+    "files-metadata.json"
+  );
   private index = new Map<string, FileMetadata>(); // fileId -> metadata
   private hashIndex = new Map<string, string>(); // hash -> fileId
   private pathIndex = new Map<string, string>(); // path -> fileId
@@ -38,6 +42,7 @@ export default class FileCatalog extends EventEmitter {
   }
 
   private async persistIndex() {
+    console.log([...this.index.values()]);
     await fse.writeJson(this.dataFile + ".tmp", [...this.index.values()], {
       spaces: 2,
     });
@@ -58,6 +63,7 @@ export default class FileCatalog extends EventEmitter {
 
   public async onAdd(filePath: string) {
     const fileMeta = await this.limitHash(() => this.registerFile(filePath));
+
     if (fileMeta) {
       this.emit("file:added", fileMeta);
     }

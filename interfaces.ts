@@ -11,14 +11,6 @@ export interface FileMetadata {
   isSync: "synchronized" | "synchronizing" | "unsynchronized";
 }
 
-export interface PeerInfo {
-  id: string;
-  displayName: string;
-  address: string;
-  port: number; // padronizado para number
-  lastSeen: number;
-}
-
 export interface PeerMsg {
   type: string;
   peerId: string;
@@ -39,8 +31,22 @@ export interface PeerIdentity {
   createdAt: string;
 }
 
+export interface PeerState {
+  info: PeerInfo; // volátil
+  sync: PeerSyncPersist; // persistente (nome 'sync' para casar com SyncManager)
+}
+
+export interface PeerInfo {
+  id: string;
+  displayName: string;
+  address: string;
+  port: number; // padronizado para number
+  lastSeen: number;
+}
+
 export interface PeerSyncPersist {
   id: string;
+  displayName: string;
   lastAddress: string;
   port: number;
   lastSeen: number;
@@ -49,9 +55,4 @@ export interface PeerSyncPersist {
     toDelete: any[];
     toRequest: any[];
   };
-}
-
-export interface PeerState {
-  info: PeerInfo; // volátil
-  sync: PeerSyncPersist; // persistente (nome 'sync' para casar com SyncManager)
 }

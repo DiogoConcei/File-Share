@@ -15,28 +15,29 @@ async function main() {
 
   const identity = await IdentityManager.loadOrCreate();
 
-  // const fileCatalog = new FileCatalog();
-  // await fileCatalog.start();
+  // Iniciar o watcher e o index
+  const fileCatalog = new FileCatalog();
+  await fileCatalog.start();
 
   // As rotas precisam ser modificadas para corresponder a cada peer
-  // const dataFile = path.resolve(__dirname, "json", "files-metadata.json");
-  // const fileApi = new FileHttpApi(port, dataFile);
-  // fileApi.start();
+  const dataFile = path.resolve(__dirname, "json", "files-metadata.json");
+  const fileApi = new FileHttpApi(port, dataFile);
+  fileApi.start();
 
-  // const syncManager = new SyncManager(identity.peerId);
-  // syncManager.start();
+  const syncManager = new SyncManager();
+  syncManager.start();
 
   const discovery = new DiscoveryService(port, identity);
   // acho que está faltando discovery.start()
 
-  // discovery.on("peer:seen", (peer) => {
-  //   syncManager.emit("peer:seen", peer);
-  // });
+  discovery.on("peer:seen", (peer) => {
+    syncManager.emit("peer:seen", peer);
+  });
 
   // Não acho que esse tipo de chamda é necessária, é tipo ativar a mesma lampada duas vezes
-  // fileCatalog.on("file:added", (meta) => {
-  //   syncManager.emit("file:added", meta);
-  // });
+  fileCatalog.on("file:added", (meta) => {
+    syncManager.emit("file:added", meta);
+  });
 
   // syncManager.on("peer:discovered", async (peer) => {
   //   try {
@@ -53,7 +54,7 @@ async function main() {
   //   }
   // });
 
-  discovery.start();
+  // discovery.start();
 
   console.log(`App P2P iniciada. HTTP em http://localhost:${port}`);
 }
