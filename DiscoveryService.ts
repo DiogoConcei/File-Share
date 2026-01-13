@@ -1,24 +1,23 @@
 import dgram from "dgram";
-import { PeerInfo } from "./interfaces";
+import { PeerInfo, PeerIdentity } from "./interfaces";
 import { EventEmitter } from "events";
-import crypto from "crypto";
 
 export default class DiscoveryService extends EventEmitter {
   private readonly multicastGroup = "239.255.0.1";
   private readonly port: number;
-  private readonly peerId = crypto.randomUUID();
+  private readonly identity: PeerIdentity;
 
   private readonly socket = dgram.createSocket({
     type: "udp4",
     reuseAddr: true,
   });
 
-  private readonly peers = new Map<string, PeerInfo>(); // id -> peer
   private announceTimer?: NodeJS.Timeout;
 
-  constructor(port: number) {
+  constructor(port: number, identity: PeerIdentity) {
     super();
     this.port = port;
+    this.identity = identity;
     this.setupSocket();
   }
 
@@ -27,7 +26,7 @@ export default class DiscoveryService extends EventEmitter {
       this.socket.addMembership(this.multicastGroup);
       this.socket.setMulticastTTL(1);
 
-      this.emit("ready", this.peerId);
+      this.emit("ready", this.identity.peerId);
     });
 
     this.socket.on("message", (msg, rinfo) => {
@@ -45,19 +44,6 @@ export default class DiscoveryService extends EventEmitter {
     this.announceTimer = setInterval(() => {
       this.announce();
     }, 1000 * 5);
-
-    setInterval(() => {
-      const now = Date.now();
-      const second = 1000; // um segundo
-
-      this.peers.forEach((peer) => {
-        if (now - peer.lastSeen > second * 8) {
-          console.log(`Conexao perdida com o peer: ${peer.id}`);
-          this.peers.delete(peer.id);
-          this.emit("peer:lost", peer);
-        }
-      });
-    }, 1000 * 5);
   }
 
   stop() {
@@ -69,7 +55,8 @@ export default class DiscoveryService extends EventEmitter {
     const payload = Buffer.from(
       JSON.stringify({
         type: "ANNOUNCE",
-        peerId: this.peerId,
+        peerId: this.identity.peerId,
+        name: this.identity.displayName,
         port: this.port,
         timestamp: Date.now(),
       })
@@ -81,7 +68,7 @@ export default class DiscoveryService extends EventEmitter {
   private handleMessage(msg: Buffer, rinfo: dgram.RemoteInfo) {
     const data = JSON.parse(msg.toString());
 
-    if (data.peerId === this.peerId) return;
+    if (data.peerId === this.identity.peerId) return;
 
     const peer: PeerInfo = {
       id: data.peerId,
@@ -90,11 +77,6 @@ export default class DiscoveryService extends EventEmitter {
       lastSeen: Date.now(),
     };
 
-    const isNew = !this.peers.has(peer.id);
-    this.peers.set(peer.id, peer);
-
-    if (isNew) {
-      this.emit("peer:discovered", peer);
-    }
+    this.emit("peer:seen", peer);
   }
 }

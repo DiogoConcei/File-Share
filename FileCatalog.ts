@@ -6,6 +6,8 @@ import crypto from "crypto";
 import chokidar from "chokidar";
 import path from "path";
 import fse from "fs-extra";
+import { Readable } from "stream";
+import { pipeline } from "node:stream/promises";
 import PLimit from "p-limit";
 
 export default class FileCatalog extends EventEmitter {
@@ -54,7 +56,7 @@ export default class FileCatalog extends EventEmitter {
     watcher.on("unlink", (p) => this.onRemove(p));
   }
 
-  private async onAdd(filePath: string) {
+  public async onAdd(filePath: string) {
     const fileMeta = await this.limitHash(() => this.registerFile(filePath));
     if (fileMeta) {
       this.emit("file:added", fileMeta);
@@ -89,7 +91,7 @@ export default class FileCatalog extends EventEmitter {
     return metadata;
   }
 
-  private async registerFile(filePath: string): Promise<FileMetadata> {
+  public async registerFile(filePath: string): Promise<FileMetadata> {
     const [hash, stat] = await Promise.all([
       this.hashFile(filePath),
       fse.stat(filePath),
@@ -130,7 +132,7 @@ export default class FileCatalog extends EventEmitter {
     return meta;
   }
 
-  private async hashFile(filePath: string): Promise<string> {
+  public async hashFile(filePath: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const hash = crypto.createHash("sha256");
       const rs = fse.createReadStream(filePath);
@@ -138,5 +140,38 @@ export default class FileCatalog extends EventEmitter {
       rs.on("end", () => resolve(hash.digest("hex")));
       rs.on("error", reject);
     });
+  }
+
+  // Método para salvar o chunk que a api envia
+  public async saveStream(stream: Readable, fileName: string) {
+    const filePath = path.join(this.baseDir, fileName);
+    await pipeline(stream, fse.createWriteStream(filePath));
+    return filePath;
+  }
+
+  // Método para comparar o  hash entre o arquivo recebido e o presente
+  public async checkHash(fileHash: string, newPath: string): Promise<boolean> {
+    try {
+      const calcHash = await this.hashFile(newPath);
+      if (fileHash !== calcHash) return false;
+      return true;
+    } catch (e) {
+      console.error(`Falha em verificar integridade do arquivo: `, e);
+      return false;
+    }
+  }
+
+  // Método para externalizar a data do server
+  public async fetchServerFiles(): Promise<FileMetadata[]> {
+    try {
+      const jsonData: FileMetadata[] = await fse.readJson(this.dataFile);
+
+      if (jsonData.length === 0) return [];
+
+      return jsonData;
+    } catch (e) {
+      console.error(`Falha em recuperar dados: `, e);
+      return [];
+    }
   }
 }

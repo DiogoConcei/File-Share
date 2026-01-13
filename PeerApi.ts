@@ -1,55 +1,53 @@
 import axios from "axios";
 import FileCatalog from "./FileCatalog";
 import { Readable } from "stream";
-import { modelFile, compareData } from "./interfaces";
+import { FileMetadata, DiffData } from "./interfaces";
 
 export default class PeerApi {
   private readonly fileCatalog = new FileCatalog();
   private readonly address: string;
-  private readonly port: string;
+  private readonly port: number;
 
-  constructor(address: string, port: string) {
+  constructor(address: string, port: number) {
     this.address = address;
     this.port = port;
   }
 
-  public async fetchPeerFiles(): Promise<modelFile[]> {
+  public async fetchPeerFiles(): Promise<FileMetadata[]> {
     try {
       const url = `http://${this.address}:${this.port}/`;
 
-      const response = await axios.get<modelFile[]>(url);
+      const response = await axios.get<FileMetadata[]>(url);
 
       if (response.status !== 200) return [];
 
       return response.data;
     } catch (e) {
-      console.log(`Falha em ler arquivos`);
+      console.log(`Falha em ler arquivos do peer ${this.address}:${this.port}`);
       return [];
     }
   }
 
-  public async compareData(): Promise<compareData> {
+  public async compareFiles(): Promise<DiffData> {
     try {
       const peerData = await this.fetchPeerFiles();
-      const serverData = await this.fileCatalog.getData();
+      const serverData = await this.fileCatalog.fetchServerFiles();
 
-      // Maps para acesso O(1) por fileId e para garantir unicidade por id
-      const peerMap = new Map<string, modelFile>();
+      const peerMap = new Map<string, FileMetadata>();
       for (const f of peerData) peerMap.set(f.fileId, f);
 
-      const serverMap = new Map<string, modelFile>();
+      const serverMap = new Map<string, FileMetadata>();
       for (const f of serverData) serverMap.set(f.fileId, f);
 
       const peerIds = new Set(peerMap.keys());
       const serverIds = new Set(serverMap.keys());
 
-      const onlyInPeer: modelFile[] = [];
-      const onlyInServer: modelFile[] = [];
-      const sync: modelFile[] = [];
+      const onlyInPeer: FileMetadata[] = [];
+      const onlyInServer: FileMetadata[] = [];
+      const sync: FileMetadata[] = [];
 
       for (const id of peerIds) {
         if (serverIds.has(id)) {
-          // Aqui escolhi guardar a versão do peer (pode trocar pela do server se preferir)
           const file = peerMap.get(id)!;
           sync.push(file);
         } else {
@@ -57,7 +55,6 @@ export default class PeerApi {
         }
       }
 
-      // Percorre server: só adiciona os que NÃO existem no peer (os "onlyInServer")
       for (const id of serverIds) {
         if (!peerIds.has(id)) {
           onlyInServer.push(serverMap.get(id)!);
@@ -79,7 +76,7 @@ export default class PeerApi {
     }
   }
 
-  public async peerSync(peerFile: modelFile) {
+  public async peerSync(peerFile: FileMetadata) {
     try {
       const fileName = peerFile.name.concat(peerFile.ext);
 
@@ -103,7 +100,7 @@ export default class PeerApi {
         return;
       }
 
-      await this.fileCatalog.indexFile(filePath, peerFile);
+      await this.fileCatalog.registerFile(filePath);
     } catch (e) {
       console.log(`Falha em ler arquivos`);
       return [];
