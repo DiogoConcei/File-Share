@@ -22,6 +22,7 @@ export interface PeerInfo {
 export interface PeerMsg {
   type: string;
   peerId: string;
+  port: number;
   name: string;
   timeStamp: number;
 }

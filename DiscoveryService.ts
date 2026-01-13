@@ -52,14 +52,15 @@ export default class DiscoveryService extends EventEmitter {
   }
 
   private announce() {
-    const msg: PeerMsg = {
-      type: "ANNOUNCE",
-      peerId: this.identity.peerId,
-      name: this.identity.displayName,
-      timeStamp: Date.now(),
-    };
-
-    const payload = Buffer.from(JSON.stringify(msg));
+    const payload = Buffer.from(
+      JSON.stringify({
+        type: "ANNOUNCE",
+        peerId: this.identity.peerId,
+        name: this.identity.displayName,
+        port: this.port,
+        timeStamp: Date.now(),
+      })
+    );
 
     this.socket.send(payload, this.port, this.multicastGroup);
   }
