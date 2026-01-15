@@ -205,7 +205,6 @@ export default class FileCatalog extends EventEmitter {
     const meta = await this.fetchFile(fileId);
 
     if (!meta) {
-      console.log(meta);
       throw new Error(`Arquivo não encontrado no catálogo: ${fileId}`);
     }
 

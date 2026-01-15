@@ -76,8 +76,6 @@ export default class DiscoveryService extends EventEmitter {
       return;
     }
 
-    console.log(`msg recebida: `, data);
-
     if (!data || data.type !== "ANNOUNCE") return;
 
     if (data.peerId === this.identity.peerId) return;
