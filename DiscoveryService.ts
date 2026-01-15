@@ -4,7 +4,8 @@ import { EventEmitter } from "events";
 
 export default class DiscoveryService extends EventEmitter {
   private readonly multicastGroup = "239.255.0.1";
-  private readonly port: number;
+  private readonly discoveryPort: number;
+  private readonly httpPort: number;
   private readonly identity: PeerIdentity;
 
   private readonly socket = dgram.createSocket({
@@ -14,10 +15,11 @@ export default class DiscoveryService extends EventEmitter {
 
   private announceTimer?: NodeJS.Timeout;
 
-  constructor(port: number, identity: PeerIdentity) {
+  constructor(discoveryPort: number, httpPort: number, identity: PeerIdentity) {
     super();
-    this.port = port;
     this.identity = identity;
+    this.httpPort = httpPort;
+    this.discoveryPort = discoveryPort;
     this.setupSocket();
   }
 
@@ -39,7 +41,7 @@ export default class DiscoveryService extends EventEmitter {
   }
 
   start() {
-    this.socket.bind(this.port);
+    this.socket.bind(this.discoveryPort);
 
     this.announceTimer = setInterval(() => {
       this.announce();
@@ -57,12 +59,12 @@ export default class DiscoveryService extends EventEmitter {
         type: "ANNOUNCE",
         peerId: this.identity.peerId,
         name: this.identity.displayName,
-        port: this.port,
+        port: this.httpPort,
         timeStamp: Date.now(),
       })
     );
 
-    this.socket.send(payload, this.port, this.multicastGroup);
+    this.socket.send(payload, this.discoveryPort, this.multicastGroup);
   }
 
   private handleMessage(msg: Buffer, rinfo: dgram.RemoteInfo) {
@@ -73,6 +75,8 @@ export default class DiscoveryService extends EventEmitter {
     } catch {
       return;
     }
+
+    console.log(`msg recebida: `, data);
 
     if (!data || data.type !== "ANNOUNCE") return;
 

@@ -23,13 +23,13 @@ async function main() {
   const fileApi = new FileHttpApi(httpPort, dataFile);
   fileApi.start();
 
-  const syncManager = new SyncManager(httpPort);
+  const syncManager = new SyncManager();
   syncManager.start();
 
-  const discovery = new DiscoveryService(discoveryPort, identity);
+  const discovery = new DiscoveryService(discoveryPort, httpPort, identity);
 
   discovery.on("peer:seen", (peer) => {
-    console.log(peer);
+    console.log(`peer encontrado: `, peer);
     syncManager.emit("peer:seen", peer);
   });
 

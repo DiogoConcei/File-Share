@@ -32,11 +32,9 @@ export default class SyncManager extends EventEmitter {
   };
 
   private running = false;
-  private readonly port: number;
 
-  constructor(port: number) {
+  constructor() {
     super();
-    this.port = port;
   }
 
   start() {
@@ -117,7 +115,7 @@ export default class SyncManager extends EventEmitter {
           id: peer.id,
           displayName: peer.displayName,
           lastAddress: peer.address,
-          port: this.port,
+          port: peer.port,
           lastSeen: Date.now(),
           queue: {
             toSend: [],
@@ -179,7 +177,7 @@ export default class SyncManager extends EventEmitter {
     state.info = {
       ...state.info,
       address: peer.address,
-      port: this.port,
+      port: peer.port,
       lastSeen: Date.now(),
     };
   }
