@@ -42,7 +42,6 @@ export default class FileCatalog extends EventEmitter {
   }
 
   private async persistIndex() {
-    console.log([...this.index.values()]);
     await fse.writeJson(this.dataFile + ".tmp", [...this.index.values()], {
       spaces: 2,
     });
@@ -62,6 +61,7 @@ export default class FileCatalog extends EventEmitter {
   }
 
   public async onAdd(filePath: string) {
+    console.log(`${filePath} has been added`);
     const fileMeta = await this.limitHash(() => this.registerFile(filePath));
 
     if (fileMeta) {
@@ -78,6 +78,8 @@ export default class FileCatalog extends EventEmitter {
 
   private async unlinkFile(filePath: string): Promise<FileMetadata> {
     const fileId = this.pathIndex.get(filePath);
+
+    console.log(`${filePath} has been deleted`);
 
     if (!fileId) {
       throw new Error(`Falha em encontrar o arquivo ${filePath}`);
@@ -133,6 +135,7 @@ export default class FileCatalog extends EventEmitter {
 
     this.index.set(meta.fileId, meta);
     this.hashIndex.set(hash, meta.fileId);
+    this.pathIndex.set(meta.path, meta.fileId);
     await this.persistIndex();
 
     return meta;

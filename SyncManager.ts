@@ -60,44 +60,45 @@ export default class SyncManager extends EventEmitter {
   }
 
   private async addPeer(peer: PeerInfo) {
-    const syncState = await this.loadSyncData();
+    await this.withWriteLock(async () => {
+      const syncState = await this.loadSyncData();
 
-    let persisted: PeerSyncPersist | undefined = syncState.peers[peer.id];
+      let persisted: PeerSyncPersist | undefined = syncState.peers[peer.id];
 
-    if (!persisted) {
-      persisted = {
-        id: peer.id,
-        displayName: peer.displayName,
-        lastAddress: peer.address,
-        port: peer.port,
-        lastSeen: Date.now(),
-        queue: {
-          toSend: [],
-          toDelete: [],
-          toRequest: [],
+      if (!persisted) {
+        persisted = {
+          id: peer.id,
+          displayName: peer.displayName,
+          lastAddress: peer.address,
+          port: peer.port,
+          lastSeen: Date.now(),
+          queue: {
+            toSend: [],
+            toDelete: [],
+            toRequest: [],
+          },
+        };
+
+        syncState.peers[peer.id] = persisted;
+      } else {
+        persisted.lastAddress = peer.address;
+        persisted.port = peer.port;
+        persisted.lastSeen = Date.now();
+      }
+
+      await this.persistSyncData(syncState);
+
+      const state: PeerState = {
+        info: {
+          ...peer,
+          lastSeen: Date.now(),
         },
+        sync: persisted,
       };
 
-      syncState.peers[peer.id] = persisted;
-    } else {
-      persisted.lastAddress = peer.address;
-      persisted.port = peer.port;
-      persisted.lastSeen = Date.now();
-    }
-
-    await this.persistSyncData(syncState);
-
-    const state: PeerState = {
-      info: {
-        ...peer,
-        lastSeen: Date.now(),
-      },
-      sync: persisted,
-    };
-
-    this.peers.set(peer.id, state);
-
-    this.emit("peer:discovered", peer);
+      this.peers.set(peer.id, state);
+      this.emit("peer:discovered", peer);
+    });
   }
 
   private async loadSyncData(): Promise<{ peers: Record<string, any> }> {
@@ -137,23 +138,43 @@ export default class SyncManager extends EventEmitter {
   }
 
   private async toSend(fileMeta: FileMetadata) {
-    const syncState = await this.loadSyncData();
+    await this.withWriteLock(async () => {
+      const syncState = await this.loadSyncData();
 
-    for (const [peerId, peerState] of this.peers) {
-      const persisted = syncState.peers[peerId];
-      if (!persisted) continue;
+      for (const [peerId, peerState] of this.peers) {
+        const persisted = syncState.peers[peerId];
+        if (!persisted) continue;
 
-      persisted.queue.toSend.push(fileMeta);
+        persisted.queue.toSend.push(fileMeta);
+        peerState.sync.queue.toSend.push(fileMeta);
 
-      peerState.sync.queue.toSend.push(fileMeta);
+        this.emit("file:queued", {
+          peerId,
+          fileId: fileMeta.fileId,
+        });
+      }
 
-      this.emit("file:queued", {
-        peerId,
-        fileId: fileMeta.fileId,
-      });
+      await this.persistSyncData(syncState);
+    });
+  }
+
+  private writeLock: Promise<void> = Promise.resolve();
+
+  private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+
+    const next = new Promise<void>((r) => (release = r));
+
+    const prev = this.writeLock;
+    this.writeLock = this.writeLock.then(() => next);
+
+    await prev;
+
+    try {
+      return await fn();
+    } finally {
+      release();
     }
-
-    await this.persistSyncData(syncState);
   }
 
   stop() {

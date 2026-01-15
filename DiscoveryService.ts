@@ -66,7 +66,16 @@ export default class DiscoveryService extends EventEmitter {
   }
 
   private handleMessage(msg: Buffer, rinfo: dgram.RemoteInfo) {
-    const data: PeerMsg = JSON.parse(msg.toString());
+    let data: PeerMsg;
+
+    try {
+      data = JSON.parse(msg.toString());
+    } catch {
+      // pacote inválido → ignora silenciosamente
+      return;
+    }
+
+    if (!data || data.type !== "ANNOUNCE") return;
 
     if (data.peerId === this.identity.peerId) return;
 
@@ -74,7 +83,7 @@ export default class DiscoveryService extends EventEmitter {
       id: data.peerId,
       displayName: data.name,
       address: rinfo.address,
-      port: rinfo.port,
+      port: data.port, // ⚠️ usar data.port, não rinfo.port
       lastSeen: Date.now(),
     };
 

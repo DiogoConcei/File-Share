@@ -11,7 +11,8 @@ import PeerApi from "./PeerApi";
 dotenv.config({ path: "./.env" });
 
 async function main() {
-  const port = Number(process.env.PORT || 8080);
+  const httpPort = Number(process.env.HTTP_PORT);
+  const discoveryPort = Number(process.env.DISCOVERY_PORT);
 
   const identity = await IdentityManager.loadOrCreate();
 
@@ -21,13 +22,13 @@ async function main() {
 
   // As rotas precisam ser modificadas para corresponder a cada peer
   const dataFile = path.resolve(__dirname, "json", "files-metadata.json");
-  const fileApi = new FileHttpApi(port, dataFile);
+  const fileApi = new FileHttpApi(httpPort, dataFile);
   fileApi.start();
 
   const syncManager = new SyncManager();
   syncManager.start();
 
-  const discovery = new DiscoveryService(port, identity);
+  const discovery = new DiscoveryService(discoveryPort, identity);
   // acho que está faltando discovery.start()
 
   discovery.on("peer:seen", (peer) => {
@@ -39,24 +40,24 @@ async function main() {
     syncManager.emit("file:added", meta);
   });
 
-  // syncManager.on("peer:discovered", async (peer) => {
-  //   try {
-  //     console.log("Peer descoberto, sincronizando:", peer);
-  //     const api = new PeerApi(peer.address, peer.port);
-  //     const diff = await api.compareFiles();
+  syncManager.on("peer:discovered", async (peer) => {
+    // try {
+    console.log("Peer descoberto, sincronizando:", peer);
+    //     const api = new PeerApi(peer.address, peer.port);
+    //     const diff = await api.compareFiles();
 
-  //     for (const f of diff.inPeer) {
-  //       console.log("Baixando arquivo do peer:", f.fileId);
-  //       await api.peerSync(f);
-  //     }
-  //   } catch (err) {
-  //     console.error("Erro durante sync com peer:", err);
-  //   }
-  // });
+    //     for (const f of diff.inPeer) {
+    //       console.log("Baixando arquivo do peer:", f.fileId);
+    //       await api.peerSync(f);
+    //     }
+    //   } catch (err) {
+    //     console.error("Erro durante sync com peer:", err);
+    //   }
+  });
 
-  // discovery.start();
+  discovery.start();
 
-  console.log(`App P2P iniciada. HTTP em http://localhost:${port}`);
+  console.log(`App P2P iniciada. HTTP em http://localhost:${httpPort}`);
 }
 
 main().catch((err) => {
