@@ -71,7 +71,6 @@ export default class DiscoveryService extends EventEmitter {
     try {
       data = JSON.parse(msg.toString());
     } catch {
-      // pacote inválido → ignora silenciosamente
       return;
     }
 
@@ -83,7 +82,7 @@ export default class DiscoveryService extends EventEmitter {
       id: data.peerId,
       displayName: data.name,
       address: rinfo.address,
-      port: data.port, // ⚠️ usar data.port, não rinfo.port
+      port: data.port,
       lastSeen: Date.now(),
     };
 

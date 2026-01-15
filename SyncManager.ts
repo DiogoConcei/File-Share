@@ -30,9 +30,11 @@ export default class SyncManager extends EventEmitter {
     [Priority.LOW]: [],
   };
   private running = false;
+  private readonly port: number;
 
-  constructor() {
+  constructor(port: number) {
     super();
+    this.port = port;
   }
 
   start() {
@@ -113,7 +115,7 @@ export default class SyncManager extends EventEmitter {
           id: peer.id,
           displayName: peer.displayName,
           lastAddress: peer.address,
-          port: peer.port,
+          port: this.port,
           lastSeen: Date.now(),
           queue: {
             toSend: [],
@@ -202,6 +204,11 @@ export default class SyncManager extends EventEmitter {
 
     for (const job of toEnqueue) {
       this.enqueue(async () => {
+        console.log(
+          "[QUEUE] executando file:queued:toSend",
+          job.peerId,
+          job.fileMeta.fileId
+        );
         this.emit("file:queued:toSend", job);
       }, Priority.HIGH);
     }

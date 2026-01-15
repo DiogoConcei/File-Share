@@ -25,7 +25,7 @@ async function main() {
   const fileApi = new FileHttpApi(httpPort, dataFile);
   fileApi.start();
 
-  const syncManager = new SyncManager();
+  const syncManager = new SyncManager(httpPort);
   syncManager.start();
 
   const discovery = new DiscoveryService(discoveryPort, identity);
@@ -45,11 +45,15 @@ async function main() {
   });
 
   syncManager.on("file:queued:toSend", async ({ peerId, fileMeta }) => {
+    console.log("[APP] recebido file:queued:toSend", peerId, fileMeta.fileId);
+
     const peer = syncManager.getPeer(peerId);
-    if (!peer) return;
+    if (!peer) {
+      console.log("[APP] peer não encontrado", peerId);
+      return;
+    }
 
     const api = new PeerApi(peer.info.address, peer.info.port);
-
     await api.sendFile(fileMeta);
   });
 
