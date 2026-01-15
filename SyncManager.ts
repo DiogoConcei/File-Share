@@ -23,12 +23,14 @@ export default class SyncManager extends EventEmitter {
     "sync-metadata.json"
   );
   private readonly peers = new Map<string, PeerState>();
+
   private announceTimer?: NodeJS.Timeout;
   queues: Record<Priority, Task[]> = {
     [Priority.HIGH]: [],
     [Priority.MEDIUM]: [],
     [Priority.LOW]: [],
   };
+
   private running = false;
   private readonly port: number;
 
@@ -177,7 +179,6 @@ export default class SyncManager extends EventEmitter {
     state.info = {
       ...state.info,
       address: peer.address,
-      port: peer.port,
       lastSeen: Date.now(),
     };
   }

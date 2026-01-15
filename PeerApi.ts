@@ -14,6 +14,33 @@ export default class PeerApi {
     this.port = port;
   }
 
+  public async requestFile(file: FileMetadata) {
+    console.log(
+      `[PEER API] requisitando arquivo ${file.fileId} de ${this.address}:${this.port}`
+    );
+
+    const url = `http://${this.address}:${this.port}/${file.fileId}/download`;
+
+    const response = await axios.get<Readable>(url, {
+      responseType: "stream",
+    });
+
+    const data: Readable = response.data;
+
+    const fileName = file.name + file.ext;
+
+    const filePath = await this.fileCatalog.saveStream(data, fileName);
+
+    const ok = await this.fileCatalog.checkHash(file.hash, filePath);
+    if (!ok) {
+      throw new Error("Hash mismatch após download");
+    }
+
+    await this.fileCatalog.registerFile(filePath);
+
+    console.log("[PEER API] arquivo sincronizado com sucesso");
+  }
+
   public async fetchPeerFiles(): Promise<FileMetadata[]> {
     try {
       const url = `http://${this.address}:${this.port}/`;
