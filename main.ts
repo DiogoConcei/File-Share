@@ -50,9 +50,9 @@ async function main() {
 
     if (!peer) return;
 
-    const api = new PeerApi(peer.sync.lastAddress, peer.sync.port);
+    const api = new PeerApi(peer.sync.lastAddress, peer.info.port);
 
-    await api.requestFile(fileMeta);
+    await api.sendFile(fileMeta);
   });
 
   discovery.start();

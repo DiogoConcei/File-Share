@@ -187,7 +187,6 @@ export default class FileCatalog extends EventEmitter {
   public async fetchFile(fileId: string): Promise<FileMetadata | null> {
     try {
       const data = await this.fetchServerFiles();
-
       const file = data.find((f) => f.fileId === fileId);
 
       if (!file) return null;
@@ -197,5 +196,18 @@ export default class FileCatalog extends EventEmitter {
       console.error(`Falha em filtrar capítulo individual: `, e);
       return null;
     }
+  }
+
+  public async getReadStream(fileId: string): Promise<Readable> {
+    const meta = await this.fetchFile(fileId);
+    if (!meta) {
+      throw new Error(`Arquivo não encontrado no catálogo: ${fileId}`);
+    }
+
+    if (!(await fse.pathExists(meta.path))) {
+      throw new Error(`Arquivo não existe no disco: ${meta.path}`);
+    }
+
+    return fse.createReadStream(meta.path);
   }
 }

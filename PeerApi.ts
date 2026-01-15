@@ -56,21 +56,24 @@ export default class PeerApi {
     }
   }
 
-  public async sendFile(file: FileMetadata): Promise<void> {
-    const url = `http://${this.address}:${this.port}/upload`;
+  public async sendFile(file: FileMetadata) {
+    console.log(
+      `[PEER API] enviando arquivo ${file.fileId} para ${this.address}:${this.port}`
+    );
 
-    const stream = fse.createReadStream(file.path);
+    const stream = await this.fileCatalog.getReadStream(file.path);
 
-    await axios.post(url, stream, {
+    await axios.post(`http://${this.address}:${this.port}/upload`, stream, {
       headers: {
         "Content-Type": "application/octet-stream",
-        "Content-Length": file.size,
         fileId: file.fileId,
         name: file.name,
         ext: file.ext,
         hash: file.hash,
       },
     });
+
+    console.log("[PEER API] upload concluído");
   }
 
   // public async compareFiles(): Promise<DiffData> {

@@ -36,23 +36,25 @@ export default class FileHttpApi {
 
     // Get com um único arquivo
     this.app.get("/:ulid/download", async (req, res) => {
-      console.log("[HTTP] download solicitado:", req.params.ulid);
+      console.log("[HTTP] pedido de download:", req.params.ulid);
+      console.log("[HTTP] dataFile:", this.dataFile);
 
-      const data = await fse.readJson(this.dataFile, { encoding: "utf8" });
-      const file = data.find((f: any) => f.fileId === req.params.ulid);
+      // const data = await fse.readJson(this.dataFile);
+      // console.log(
+      //   "[HTTP] arquivos conhecidos:",
+      //   data.map((f: any) => f.fileId)
+      // );
 
-      if (!file) {
-        console.log("[HTTP] arquivo não encontrado");
-        res.status(404).end();
-        return;
-      }
+      // const file = data.find((f: any) => f.fileId === req.params.ulid);
 
-      console.log("[HTTP] enviando arquivo:", file.path);
-      res.download(file.path, (err) => {
-        if (err) {
-          console.error("[HTTP] erro no download:", err);
-        }
-      });
+      // if (!file) {
+      //   console.log("[HTTP] fileId NÃO encontrado");
+      //   res.status(404).end();
+      //   return;
+      // }
+
+      // console.log("[HTTP] enviando arquivo:", file.path);
+      // res.download(file.path);
     });
   }
 

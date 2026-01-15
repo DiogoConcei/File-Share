@@ -179,6 +179,7 @@ export default class SyncManager extends EventEmitter {
     state.info = {
       ...state.info,
       address: peer.address,
+      port: this.port,
       lastSeen: Date.now(),
     };
   }
