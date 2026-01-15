@@ -21,21 +21,23 @@ export default class PeerApi {
 
     const url = `http://${this.address}:${this.port}/${file.fileId}/download`;
 
+    // 🔽 aqui está a diferença-chave
     const response = await axios.get<Readable>(url, {
       responseType: "stream",
     });
 
-    const data: Readable = response.data;
-
     const fileName = file.name + file.ext;
 
-    const filePath = await this.fileCatalog.saveStream(data, fileName);
+    // salva stream localmente
+    const filePath = await this.fileCatalog.saveStream(response.data, fileName);
 
+    // valida integridade
     const ok = await this.fileCatalog.checkHash(file.hash, filePath);
     if (!ok) {
       throw new Error("Hash mismatch após download");
     }
 
+    // registra no catálogo local
     await this.fileCatalog.registerFile(filePath);
 
     console.log("[PEER API] arquivo sincronizado com sucesso");
@@ -61,12 +63,12 @@ export default class PeerApi {
       `[PEER API] enviando arquivo ${file.fileId} para ${this.address}:${this.port}`
     );
 
-    const stream = await this.fileCatalog.getReadStream(file.path);
+    const stream = await this.fileCatalog.getReadStream(file.fileId);
 
     await axios.post(`http://${this.address}:${this.port}/upload`, stream, {
       headers: {
         "Content-Type": "application/octet-stream",
-        fileId: file.fileId,
+        fileid: file.fileId,
         name: file.name,
         ext: file.ext,
         hash: file.hash,

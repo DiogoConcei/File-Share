@@ -187,9 +187,12 @@ export default class FileCatalog extends EventEmitter {
   public async fetchFile(fileId: string): Promise<FileMetadata | null> {
     try {
       const data = await this.fetchServerFiles();
-      const file = data.find((f) => f.fileId === fileId);
+      const file = data.find((f) => f.fileId == fileId);
 
-      if (!file) return null;
+      if (!file) {
+        console.log("Arquivos disponíveis:", JSON.stringify(data, null, 2));
+        return null;
+      }
 
       return file;
     } catch (e) {
@@ -200,7 +203,9 @@ export default class FileCatalog extends EventEmitter {
 
   public async getReadStream(fileId: string): Promise<Readable> {
     const meta = await this.fetchFile(fileId);
+
     if (!meta) {
+      console.log(meta);
       throw new Error(`Arquivo não encontrado no catálogo: ${fileId}`);
     }
 

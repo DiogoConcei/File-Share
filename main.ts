@@ -44,17 +44,44 @@ async function main() {
     syncManager.emit("peer:start-queue", peer);
   });
 
-  syncManager.on("file:queued:toSend", async ({ peerId, fileMeta }) => {
-    const peer = syncManager.getPeer(peerId);
-    console.log("[APP] recebido file:queued:toSend", peerId, fileMeta.fileId);
+  // ... dentro de main(), onde você já tem fileCatalog e syncManager:
 
-    if (!peer) return;
+  // quando um peer é detectado, peça a lista de arquivos e baixe os que faltam
+  syncManager.on("peer:start-queue", async (peer) => {
+    // certifique-se que 'peer' tem .address e .port (consistência com DiscoveryService)
+    const address =
+      peer.address || peer.info?.address || peer.sync?.lastAddress;
+    const port = peer.port || peer.info?.port;
 
-    const api = new PeerApi(peer.sync.lastAddress, peer.info.port);
+    if (!address || !port) {
+      console.warn("[APP] peer sem endereço/porta válidos", peer);
+      return;
+    }
 
-    await api.sendFile(fileMeta);
+    const api = new PeerApi(address, 3000);
+
+    try {
+      const peerFiles = await api.fetchPeerFiles(); // lista do peer remoto
+      const localFiles = await fileCatalog.fetchServerFiles(); // lista local
+
+      const localIds = new Set(localFiles.map((f) => f.fileId));
+
+      for (const f of peerFiles) {
+        if (!localIds.has(f.fileId)) {
+          console.log(
+            `[APP] solicitando download do arquivo ${f.fileId} de ${address}:${port}`
+          );
+          try {
+            await api.requestFile(f);
+          } catch (err) {
+            console.error("[APP] falha ao baixar arquivo:", f.fileId, err);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[APP] erro durante sincronização com peer", e);
+    }
   });
-
   discovery.start();
 
   console.log(`App P2P iniciada. HTTP em http://localhost:${httpPort}`);

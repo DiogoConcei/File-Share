@@ -1,9 +1,11 @@
 import express, { Express } from "express";
 import fse from "fs-extra";
+import FileCatalog from "./FileCatalog";
 
 export default class FileHttpApi {
   private app: Express;
   private port: number;
+  private readonly fileCatalog = new FileCatalog();
   private dataFile: string;
 
   constructor(port: number, dataFile: string) {
@@ -39,22 +41,51 @@ export default class FileHttpApi {
       console.log("[HTTP] pedido de download:", req.params.ulid);
       console.log("[HTTP] dataFile:", this.dataFile);
 
-      // const data = await fse.readJson(this.dataFile);
-      // console.log(
-      //   "[HTTP] arquivos conhecidos:",
-      //   data.map((f: any) => f.fileId)
-      // );
+      const data = await fse.readJson(this.dataFile);
+      console.log(
+        "[HTTP] arquivos conhecidos:",
+        data.map((f: any) => f.fileId)
+      );
 
-      // const file = data.find((f: any) => f.fileId === req.params.ulid);
+      const file = data.find((f: any) => f.fileId === req.params.ulid);
 
-      // if (!file) {
-      //   console.log("[HTTP] fileId NÃO encontrado");
-      //   res.status(404).end();
-      //   return;
-      // }
+      if (!file) {
+        console.log("[HTTP] fileId NÃO encontrado");
+        res.status(404).end();
+        return;
+      }
 
-      // console.log("[HTTP] enviando arquivo:", file.path);
-      // res.download(file.path);
+      console.log("[HTTP] enviando arquivo:", file.path);
+      res.download(file.path);
+    });
+
+    // FileHttpApi.ts
+    this.app.post("/upload", async (req, res) => {
+      try {
+        const { fileid, name, ext, hash } = req.headers as any;
+
+        if (!fileid || !name || !ext || !hash) {
+          res.status(400).json({ error: "Headers ausentes" });
+          return;
+        }
+
+        const fileName = `${name}${ext}`;
+
+        const filePath = await this.fileCatalog.saveStream(req, fileName);
+
+        const ok = await this.fileCatalog.checkHash(hash, filePath);
+        if (!ok) {
+          res.status(400).json({ error: "Hash mismatch" });
+          return;
+        }
+
+        await this.fileCatalog.registerFile(filePath);
+
+        res.status(200).json({ ok: true });
+      } catch (e) {
+        console.error("[HTTP] erro no upload:", e);
+        res.status(500).json({ error: "Falha no upload" });
+      }
     });
   }
 
