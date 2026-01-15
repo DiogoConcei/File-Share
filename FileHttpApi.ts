@@ -15,6 +15,7 @@ export default class FileHttpApi {
   }
 
   private setupRoutes() {
+    // Get com todos os arquivos
     this.app.get("/", async (_req, res) => {
       try {
         const data = await fse.readJson(this.dataFile, { encoding: "utf8" });
@@ -33,6 +34,7 @@ export default class FileHttpApi {
       }
     });
 
+    // Get com um único arquivo
     this.app.get("/:ulid/download", async (req, res) => {
       const data = await fse.readJson(this.dataFile, { encoding: "utf8" });
       const file = data.find((f: any) => f.fileId === req.params.ulid);

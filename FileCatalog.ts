@@ -183,4 +183,19 @@ export default class FileCatalog extends EventEmitter {
       return [];
     }
   }
+
+  public async fetchFile(fileId: string): Promise<FileMetadata | null> {
+    try {
+      const data = await this.fetchServerFiles();
+
+      const file = data.find((f) => f.fileId === fileId);
+
+      if (!file) return null;
+
+      return file;
+    } catch (e) {
+      console.error(`Falha em filtrar capítulo individual: `, e);
+      return null;
+    }
+  }
 }

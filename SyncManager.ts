@@ -2,12 +2,19 @@ import {
   FileMetadata,
   PeerInfo,
   PeerState,
-  PeerIdentity,
   PeerSyncPersist,
 } from "./interfaces";
 import { EventEmitter } from "events";
 import path from "path";
 import fse from "fs-extra";
+
+enum Priority {
+  HIGH = 0,
+  MEDIUM = 1,
+  LOW = 2,
+}
+
+type Task = () => Promise<void>;
 
 export default class SyncManager extends EventEmitter {
   private readonly syncData = path.resolve(
@@ -17,6 +24,12 @@ export default class SyncManager extends EventEmitter {
   );
   private readonly peers = new Map<string, PeerState>();
   private announceTimer?: NodeJS.Timeout;
+  queues: Record<Priority, Task[]> = {
+    [Priority.HIGH]: [],
+    [Priority.MEDIUM]: [],
+    [Priority.LOW]: [],
+  };
+  private running = false;
 
   constructor() {
     super();
@@ -27,6 +40,7 @@ export default class SyncManager extends EventEmitter {
       this.peerSeen(peer);
     });
 
+    // Serve para sincronizar o servidor com os possíveis peers
     this.on("file:added", (fileMeta: FileMetadata) => {
       this.toSend(fileMeta);
     });
@@ -34,6 +48,35 @@ export default class SyncManager extends EventEmitter {
     this.announceTimer = setInterval(() => {
       this.checkPeer();
     }, 1000 * 5);
+  }
+
+  private async run() {
+    this.running = true;
+
+    while (true) {
+      const task =
+        this.queues[Priority.HIGH].shift() ||
+        this.queues[Priority.MEDIUM].shift() ||
+        this.queues[Priority.LOW].shift();
+
+      if (!task) break;
+
+      try {
+        await task();
+      } catch (e) {
+        console.error("Erro na lista de tarefas: ", e);
+      }
+    }
+
+    this.running = false;
+  }
+
+  private async enqueue(task: Task, priority: Priority) {
+    this.queues[priority].push(task);
+
+    if (!this.running) {
+      this.run();
+    }
   }
 
   private checkPeer() {
@@ -137,7 +180,10 @@ export default class SyncManager extends EventEmitter {
     };
   }
 
+  // Escita != agendamento
   private async toSend(fileMeta: FileMetadata) {
+    const toEnqueue: Array<{ peerId: string; fileMeta: FileMetadata }> = [];
+
     await this.withWriteLock(async () => {
       const syncState = await this.loadSyncData();
 
@@ -148,17 +194,18 @@ export default class SyncManager extends EventEmitter {
         persisted.queue.toSend.push(fileMeta);
         peerState.sync.queue.toSend.push(fileMeta);
 
-        this.emit("file:queued", {
-          peerId,
-          fileId: fileMeta.fileId,
-        });
+        toEnqueue.push({ peerId, fileMeta });
       }
 
       await this.persistSyncData(syncState);
     });
-  }
 
-  private writeLock: Promise<void> = Promise.resolve();
+    for (const job of toEnqueue) {
+      this.enqueue(async () => {
+        this.emit("file:queued:toSend", job);
+      }, Priority.HIGH);
+    }
+  }
 
   private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
     let release!: () => void;
@@ -175,6 +222,12 @@ export default class SyncManager extends EventEmitter {
     } finally {
       release();
     }
+  }
+
+  private writeLock: Promise<void> = Promise.resolve();
+
+  public getPeer(peerId: string): PeerState | undefined {
+    return this.peers.get(peerId);
   }
 
   stop() {

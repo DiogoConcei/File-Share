@@ -29,30 +29,28 @@ async function main() {
   syncManager.start();
 
   const discovery = new DiscoveryService(discoveryPort, identity);
-  // acho que está faltando discovery.start()
 
   discovery.on("peer:seen", (peer) => {
     syncManager.emit("peer:seen", peer);
   });
 
   // Não acho que esse tipo de chamda é necessária, é tipo ativar a mesma lampada duas vezes
+  // Tenho que verificar isso aqui
   fileCatalog.on("file:added", (meta) => {
     syncManager.emit("file:added", meta);
   });
 
   syncManager.on("peer:discovered", async (peer) => {
-    // try {
-    console.log("Peer descoberto, sincronizando:", peer);
-    //     const api = new PeerApi(peer.address, peer.port);
-    //     const diff = await api.compareFiles();
+    syncManager.emit("peer:start-queue", peer);
+  });
 
-    //     for (const f of diff.inPeer) {
-    //       console.log("Baixando arquivo do peer:", f.fileId);
-    //       await api.peerSync(f);
-    //     }
-    //   } catch (err) {
-    //     console.error("Erro durante sync com peer:", err);
-    //   }
+  syncManager.on("file:queued:toSend", async ({ peerId, fileMeta }) => {
+    const peer = syncManager.getPeer(peerId);
+    if (!peer) return;
+
+    const api = new PeerApi(peer.info.address, peer.info.port);
+
+    await api.sendFile(fileMeta);
   });
 
   discovery.start();
