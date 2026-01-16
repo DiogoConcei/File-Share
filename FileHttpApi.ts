@@ -44,7 +44,7 @@ export default class FileHttpApi {
       const data = await fse.readJson(this.dataFile);
       console.log(
         "[HTTP] arquivos conhecidos:",
-        data.map((f: any) => f.fileId)
+        data.map((f: any) => f.fileId),
       );
 
       const file = data.find((f: any) => f.fileId === req.params.ulid);
@@ -74,6 +74,7 @@ export default class FileHttpApi {
         const filePath = await this.fileCatalog.saveStream(req, fileName);
 
         const ok = await this.fileCatalog.checkHash(hash, filePath);
+
         if (!ok) {
           res.status(400).json({ error: "Hash mismatch" });
           return;

@@ -12,10 +12,11 @@ import PLimit from "p-limit";
 
 export default class FileCatalog extends EventEmitter {
   private readonly baseDir = path.resolve(__dirname, "files");
+  private readonly progressDir = path.resolve(__dirname, ".inprogress");
   private readonly dataFile = path.resolve(
     __dirname,
     "json",
-    "files-metadata.json"
+    "files-metadata.json",
   );
   private index = new Map<string, FileMetadata>(); // fileId -> metadata
   private hashIndex = new Map<string, string>(); // hash -> fileId
@@ -62,18 +63,22 @@ export default class FileCatalog extends EventEmitter {
 
   public async onAdd(filePath: string) {
     console.log(`${filePath} has been added`);
-    const fileMeta = await this.limitHash(() => this.registerFile(filePath));
+    return this.withWriteLock(async () => {
+      const fileMeta = await this.limitHash(() => this.registerFile(filePath));
 
-    if (fileMeta) {
-      this.emit("file:added", fileMeta);
-    }
+      if (fileMeta) {
+        this.emit("file:added", fileMeta);
+      }
+    });
   }
 
   private async onRemove(filePath: string) {
-    const fileMeta = await this.unlinkFile(filePath);
-    if (fileMeta) {
-      this.emit("file:removed", fileMeta);
-    }
+    return this.withWriteLock(async () => {
+      const fileMeta = await this.unlinkFile(filePath);
+      if (fileMeta) {
+        this.emit("file:removed", fileMeta);
+      }
+    });
   }
 
   private async unlinkFile(filePath: string): Promise<FileMetadata> {
@@ -153,9 +158,11 @@ export default class FileCatalog extends EventEmitter {
 
   // Método para salvar o chunk que a api envia
   public async saveStream(stream: Readable, fileName: string) {
-    const filePath = path.join(this.baseDir, fileName);
+    const filePath = path.join(this.progressDir, fileName);
+    const finalPath = path.join(this.baseDir, fileName);
     await pipeline(stream, fse.createWriteStream(filePath));
-    return filePath;
+    await fse.move(filePath, finalPath);
+    return finalPath;
   }
 
   // Método para comparar o  hash entre o arquivo recebido e o presente
@@ -213,5 +220,22 @@ export default class FileCatalog extends EventEmitter {
     }
 
     return fse.createReadStream(meta.path);
+  }
+
+  private writeLock: Promise<void> = Promise.resolve();
+
+  private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const next = new Promise<void>((r) => (release = r));
+
+    const prev = this.writeLock;
+    this.writeLock = this.writeLock.then(() => next);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
   }
 }

@@ -47,27 +47,23 @@ async function main() {
       throw new Error(`Peer com id ${peerId} nao encontrado!`);
     }
 
-    console.log(`Informações do arquivo: `);
-    console.log(`Informações do peer: `, peer);
-    console.log(`Metadata do arquivo: `, fileMeta);
-
     const address = peer.sync.lastAddress;
     const port = peer.sync.port;
     const api = new PeerApi(address, port);
 
-    // try {
-    //   await api.sendFile(fileMeta);
+    try {
+      await api.sendFile(fileMeta);
 
-    //   await syncManager.withWriteLock(async () => {
-    //     const data = await syncManager.loadSyncData();
-    //     data.peers[peerId].queue.toSend = data.peers[
-    //       peerId
-    //     ].queue.toSend.filter((f: any) => f.fileId !== fileMeta.fileId);
-    //     await syncManager.persistSyncData(data);
-    //   });
-    // } catch (e) {
-    //   console.error("Falha ao enviar: ", fileMeta.id);
-    // }
+      await syncManager.withWriteLock(async () => {
+        const data = await syncManager.loadSyncData();
+        data.peers[peerId].queue.toSend = data.peers[
+          peerId
+        ].queue.toSend.filter((f: any) => f.fileId !== fileMeta.fileId);
+        await syncManager.persistSyncData(data);
+      });
+    } catch (e) {
+      console.error("Falha ao enviar: ", fileMeta.id);
+    }
   });
 
   discovery.start();
