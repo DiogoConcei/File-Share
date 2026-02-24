@@ -151,7 +151,6 @@ export default class SyncManager extends EventEmitter {
         const persisted = this.syncState.peers[peerId];
         if (!persisted) continue;
 
-        persisted.queue.toSend.push(fileMeta);
         peerState.sync.queue.toSend.push(fileMeta);
 
         toEnqueue.push({ peerId, fileMeta });

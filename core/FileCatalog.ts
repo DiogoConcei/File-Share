@@ -57,9 +57,7 @@ class FileCatalog extends EventEmitter {
       ignored: ['**/.inprogress/**'],
     });
 
-    watcher.on('add', (p) => {
-      this.onAdd(p);
-    });
+    watcher.on('add', (p) => this.onAdd(p));
     watcher.on('unlink', (p) => this.onRemove(p));
   }
 
@@ -71,42 +69,6 @@ class FileCatalog extends EventEmitter {
         this.emit('file:added', fileMeta);
       }
     });
-  }
-
-  private async onRemove(filePath: string) {
-    return this.withWriteLock(async () => {
-      const fileMeta = await this.unlinkFile(filePath);
-      if (fileMeta) {
-        this.emit('file:removed', fileMeta);
-      }
-    });
-  }
-
-  private async unlinkFile(filePath: string): Promise<FileMetadata> {
-    const fileId = this.pathIndex.get(filePath);
-
-    if (!fileId) {
-      throw new Error(`Falha em encontrar o arquivo ${filePath}`);
-    }
-
-    const metadata = this.index.get(fileId);
-
-    if (!metadata) {
-      throw new Error(`Falha em encontrar os metadados do arquivo ${filePath}`);
-    }
-
-    this.index.delete(fileId);
-    this.hashIndex.delete(metadata.hash);
-    this.pathIndex.delete(filePath);
-
-    const dataToSave = Array.from(this.index.values());
-    const isSave = await this.storage.save(dataToSave);
-
-    if (!isSave) {
-      throw new Error(`Falha em atualizar base de dados`);
-    }
-
-    return metadata;
   }
 
   public async registerFile(filePath: string): Promise<FileMetadata> {
@@ -163,13 +125,40 @@ class FileCatalog extends EventEmitter {
     return meta;
   }
 
-  // Método para externalizar a data do server
   public async fetchServerFiles(): Promise<FileMetadata[]> {
     return Array.from(this.index.values());
   }
 
   public async fetchFile(fileId: string): Promise<FileMetadata | null> {
     return this.index.get(fileId) || null;
+  }
+
+  public async syncRegister(fileMetadata: FileMetadata): Promise<boolean> {
+    const existingMeta = this.index.get(fileMetadata.fileId);
+
+    if (!existingMeta) {
+      console.error(
+        `Arquivo com ID ${fileMetadata.fileId} não encontrado no índice.`,
+      );
+      throw new Error(`Arquivo nao encontrado na base de dados`);
+    }
+
+    const syncronizedFile: FileMetadata = {
+      ...fileMetadata,
+      isDownloaded: 'downloaded',
+      isSync: 'synchronized',
+    };
+
+    this.index.set(fileMetadata.fileId, syncronizedFile);
+
+    const dataToSave = Array.from(this.index.values());
+    const isSave = await this.storage.save(dataToSave);
+
+    if (!isSave) {
+      throw new Error(`Falha em atualizar base de dados`);
+    }
+
+    return true;
   }
 
   private writeLock: Promise<void> = Promise.resolve();
@@ -187,6 +176,42 @@ class FileCatalog extends EventEmitter {
     } finally {
       release();
     }
+  }
+
+  private async onRemove(filePath: string) {
+    return this.withWriteLock(async () => {
+      const fileMeta = await this.unlinkFile(filePath);
+      if (fileMeta) {
+        this.emit('file:removed', fileMeta);
+      }
+    });
+  }
+
+  private async unlinkFile(filePath: string): Promise<FileMetadata> {
+    const fileId = this.pathIndex.get(filePath);
+
+    if (!fileId) {
+      throw new Error(`Falha em encontrar o arquivo ${filePath}`);
+    }
+
+    const metadata = this.index.get(fileId);
+
+    if (!metadata) {
+      throw new Error(`Falha em encontrar os metadados do arquivo ${filePath}`);
+    }
+
+    this.index.delete(fileId);
+    this.hashIndex.delete(metadata.hash);
+    this.pathIndex.delete(filePath);
+
+    const dataToSave = Array.from(this.index.values());
+    const isSave = await this.storage.save(dataToSave);
+
+    if (!isSave) {
+      throw new Error(`Falha em atualizar base de dados`);
+    }
+
+    return metadata;
   }
 }
 

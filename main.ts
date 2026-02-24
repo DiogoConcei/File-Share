@@ -38,42 +38,54 @@ async function main() {
     console.log(`Informações do peer detectado: `, peer);
   });
 
-  syncManager.on('file:queued:toSend', async ({ peerId, fileMeta }) => {
-    const peer = syncManager.getPeer(peerId);
+  syncManager.on(
+    'file:queued:toSend',
+    async ({
+      peerId,
+      fileMeta,
+    }: {
+      peerId: string;
+      fileMeta: FileMetadata;
+    }) => {
+      const peer = syncManager.getPeer(peerId);
 
-    if (!peer) {
-      throw new Error(`Peer com id ${peerId} nao encontrado!`);
-    }
+      if (!peer) {
+        throw new Error(`Peer com id ${peerId} nao encontrado!`);
+      }
 
-    const address = peer.sync.lastAddress;
-    const port = peer.sync.port;
-    const api = new PeerApi(address, port);
+      const address = peer.sync.lastAddress;
+      const port = peer.sync.port;
+      const api = new PeerApi(address, port);
 
-    try {
-      await api.sendFile(fileMeta);
+      try {
+        await api.sendFile(fileMeta);
 
-      await syncManager.withWriteLock(async () => {
-        const data = await syncManager.loadSyncData();
-        const peerData = data.peers[peerId];
+        await syncManager.withWriteLock(async () => {
+          const data = await syncManager.loadSyncData();
+          const peerData = data.peers[peerId];
 
-        if (!peerData) {
-          console.warn(
-            `Dados de sincronização para o peer ${peerId} não encontrados.`,
+          if (!peerData) {
+            console.warn(
+              `Dados de sincronização para o peer ${peerId} não encontrados.`,
+            );
+            return;
+          }
+
+          peerData.queue.toSend = peerData.queue.toSend.filter(
+            (file: FileMetadata) => file.fileId !== fileMeta.fileId,
           );
-          return;
-        }
 
-        peerData.queue.toSend = peerData.queue.toSend.filter(
-          (file: FileMetadata) => file.fileId !== fileMeta.fileId,
-        );
+          await syncManager.persistSyncData(data);
+          const isSave = await Catalog.syncRegister(fileMeta);
 
-        await syncManager.persistSyncData(data);
-      });
-    } catch (error) {
-      console.error(`[ERRO] Falha ao enviar o arquivo: ${fileMeta.fileId}`);
-      console.error(`[ERROR] ${String(error)}`);
-    }
-  });
+          if (!isSave) throw new Error(`Falha em persistir dados`);
+        });
+      } catch (error) {
+        console.error(`[ERROR] Falha ao enviar o arquivo: ${fileMeta.fileId}`);
+        console.error(`[ERROR] ${String(error)}`);
+      }
+    },
+  );
 
   discovery.start();
 }
