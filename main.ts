@@ -60,7 +60,7 @@ async function main() {
           console.warn(
             `Dados de sincronização para o peer ${peerId} não encontrados.`,
           );
-          return; // Encerramos a execução se for nulo
+          return;
         }
 
         peerData.queue.toSend = peerData.queue.toSend.filter(
@@ -69,8 +69,9 @@ async function main() {
 
         await syncManager.persistSyncData(data);
       });
-    } catch {
+    } catch (error) {
       console.error(`[ERRO] Falha ao enviar o arquivo: ${fileMeta.fileId}`);
+      console.error(`[ERROR] ${String(error)}`);
     }
   });
 

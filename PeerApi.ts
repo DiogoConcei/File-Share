@@ -68,7 +68,7 @@ export default class PeerApi {
       `[PEER API] enviando arquivo ${file.fileId} para ${this.address}:${this.port}`,
     );
 
-    const stream = await this.streamProcessor.getReadStream(file.fileId);
+    const stream = await this.streamProcessor.getReadStream(file.path);
 
     await axios.post(`http://${this.address}:${this.port}/upload`, stream, {
       headers: {

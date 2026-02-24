@@ -4,8 +4,8 @@ import { Readable } from 'stream';
 import { pipeline } from 'node:stream/promises';
 
 export default class StreamProcessor {
-  private readonly baseDir = path.resolve(__dirname, 'files');
-  private readonly progressDir = path.resolve(__dirname, '.inprogress');
+  private readonly baseDir = path.resolve(process.cwd(), 'files');
+  private readonly progressDir = path.resolve(process.cwd(), '.inprogress');
 
   public async saveStream(stream: Readable, fileName: string) {
     const filePath = path.join(this.progressDir, fileName);

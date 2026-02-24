@@ -1,4 +1,4 @@
-import { FileMetadata } from '../interfaces';
+import { FileMetadata } from '../interfaces/fileMetadata.interfaces';
 import { EventEmitter } from 'events';
 import { ulid } from 'ulid';
 import chokidar from 'chokidar';
@@ -37,12 +37,6 @@ class FileCatalog extends EventEmitter {
   }
 
   async start() {
-    const isLoad = await this.storage.load();
-
-    if (!isLoad) {
-      throw new Error(`Falha em carregar base de dados`);
-    }
-
     const arr: FileMetadata[] = await this.storage.load();
 
     for (const f of arr) {
@@ -55,19 +49,21 @@ class FileCatalog extends EventEmitter {
   }
 
   private startWatching() {
-    const watcher = chokidar.watch(path.resolve(__dirname, 'files'), {
+    const watchPath = path.resolve(process.cwd(), 'files');
+    const watcher = chokidar.watch(watchPath, {
       ignoreInitial: true,
       persistent: true,
       awaitWriteFinish: { stabilityThreshold: 1500, pollInterval: 100 },
       ignored: ['**/.inprogress/**'],
     });
 
-    watcher.on('add', (p) => this.onAdd(p));
+    watcher.on('add', (p) => {
+      this.onAdd(p);
+    });
     watcher.on('unlink', (p) => this.onRemove(p));
   }
 
   public async onAdd(filePath: string) {
-    console.log(`${filePath} has been added`);
     return this.withWriteLock(async () => {
       const fileMeta = await this.limitHash(() => this.registerFile(filePath));
 
@@ -160,7 +156,7 @@ class FileCatalog extends EventEmitter {
     const dataToSave = Array.from(this.index.values());
     const isSave = await this.storage.save(dataToSave);
 
-    if (isSave) {
+    if (!isSave) {
       throw new Error(`Falha em atualizar base de dados`);
     }
 

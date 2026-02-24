@@ -1,4 +1,4 @@
-import { FileMetadata } from '../interfaces';
+import { FileMetadata } from '../interfaces/fileMetadata.interfaces';
 import fse from 'fs-extra';
 import path from 'path';
 
@@ -9,11 +9,13 @@ interface SystemError {
 class StorageService {
   private readonly dataFile = path.resolve(
     __dirname,
+    process.cwd(),
     'json',
     'files-metadata.json',
   );
   private readonly backupFile = path.resolve(
     __dirname,
+    process.cwd(),
     'json',
     'files-metadata-backup.json',
   );
