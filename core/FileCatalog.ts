@@ -23,6 +23,7 @@ class FileCatalog extends EventEmitter {
   private index = new Map<string, FileMetadata>(); // fileId -> metadata
   private hashIndex = new Map<string, string>(); // hash -> fileId
   private pathIndex = new Map<string, string>(); // path -> fileId
+  private networkImportedPaths = new Set<string>();
   private limitHash = PLimit(5);
 
   constructor(hasher: IHash, storage: IStorage) {
@@ -63,15 +64,31 @@ class FileCatalog extends EventEmitter {
 
   public async onAdd(filePath: string) {
     return this.withWriteLock(async () => {
-      const fileMeta = await this.limitHash(() => this.registerFile(filePath));
+      if (this.networkImportedPaths.has(filePath)) {
+        this.networkImportedPaths.delete(filePath);
+        return;
+      }
+
+      const fileMeta = await this.limitHash(() =>
+        this.registerFile(filePath, { origin: 'local' }),
+      );
 
       if (fileMeta) {
-        this.emit('file:added', fileMeta);
+        this.emit('file:added', { fileMeta, origin: 'local' });
       }
     });
   }
 
-  public async registerFile(filePath: string): Promise<FileMetadata> {
+  public async registerFile(
+    filePath: string,
+    options: { origin?: 'local' | 'network' } = {},
+  ): Promise<FileMetadata> {
+    const origin = options.origin ?? 'local';
+
+    if (origin === 'network') {
+      this.networkImportedPaths.add(filePath);
+    }
+
     const [hash, stat] = await Promise.all([
       this.hasher.hashFile(filePath),
       fse.stat(filePath),
@@ -91,11 +108,13 @@ class FileCatalog extends EventEmitter {
       }
 
       if (existing.path !== filePath) {
+        this.pathIndex.delete(existing.path);
         existing.path = filePath;
+        existing.origin = origin;
 
         this.index.set(existing.fileId, existing);
+        this.pathIndex.set(filePath, existing.fileId);
       }
-
       return existing;
     }
 
@@ -108,6 +127,7 @@ class FileCatalog extends EventEmitter {
       isDownloaded: 'not_downloaded',
       isSync: 'unsynchronized',
       privacy: 'public',
+      origin,
       size: stat.size,
     };
 

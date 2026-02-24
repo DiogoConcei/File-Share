@@ -8,6 +8,12 @@ export interface FileMetadata {
   privacy: 'public' | 'private';
   isDownloaded: 'not_downloaded' | 'downloaded' | 'downloading';
   isSync: 'synchronized' | 'synchronizing' | 'unsynchronized';
+  origin?: 'local' | 'network';
+}
+
+export interface FileAddedEvent {
+  fileMeta: FileMetadata;
+  origin: 'local' | 'network';
 }
 
 export interface FilePackage {

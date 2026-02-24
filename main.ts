@@ -4,6 +4,7 @@ import FileHttpApi from './FileHttpApi';
 import SyncManager from './SyncManager';
 import DiscoveryService from './services/DiscoveryService';
 import PeerApi from './PeerApi';
+import { FileAddedEvent } from './interfaces/fileMetadata.interfaces';
 
 import dotenv from 'dotenv';
 import { FileMetadata } from './interfaces/fileMetadata.interfaces';
@@ -30,8 +31,12 @@ async function main() {
     syncManager.emit('peer:seen', peer);
   });
 
-  Catalog.on('file:added', (meta) => {
-    syncManager.emit('file:added', meta);
+  Catalog.on('file:added', ({ fileMeta, origin }: FileAddedEvent) => {
+    if (origin === 'network') {
+      return;
+    }
+
+    syncManager.emit('file:added', fileMeta);
   });
 
   syncManager.on('peer:discovered', async (peer) => {

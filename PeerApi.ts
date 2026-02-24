@@ -43,7 +43,7 @@ export default class PeerApi {
     }
 
     // registra no catálogo local
-    await Catalog.registerFile(filePath);
+    await Catalog.registerFile(filePath, { origin: 'network' });
 
     console.log('[PEER API] arquivo sincronizado com sucesso');
   }

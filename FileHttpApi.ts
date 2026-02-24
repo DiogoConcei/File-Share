@@ -67,7 +67,7 @@ export default class FileHttpApi {
           return;
         }
 
-        await Catalog.registerFile(filePath);
+        await Catalog.registerFile(filePath, { origin: 'network' });
 
         res.status(200).json({ ok: true });
       } catch (e) {
