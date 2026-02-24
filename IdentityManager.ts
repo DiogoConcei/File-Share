@@ -1,15 +1,15 @@
-import os from "os";
-import path from "path";
-import fse from "fs-extra";
-import { ulid } from "ulid";
-import { PeerIdentity } from "./interfaces";
-import { EventEmitter } from "events";
+import os from 'os';
+import path from 'path';
+import fse from 'fs-extra';
+import { ulid } from 'ulid';
+import { PeerIdentity } from './interfaces/peer.interfaces';
+import { EventEmitter } from 'events';
 
 export default class IdentityManager extends EventEmitter {
   private static readonly identityPath = path.resolve(
     process.cwd(),
-    "json",
-    "identity.json",
+    'json',
+    'identity.json',
   );
 
   static async loadOrCreate(): Promise<PeerIdentity> {
@@ -30,7 +30,7 @@ export default class IdentityManager extends EventEmitter {
   }
 
   private static async write(identity: PeerIdentity) {
-    const tmp = this.identityPath + ".tmp";
+    const tmp = this.identityPath + '.tmp';
     await fse.writeJson(tmp, identity, { spaces: 2 });
     await fse.move(tmp, this.identityPath, { overwrite: true });
   }

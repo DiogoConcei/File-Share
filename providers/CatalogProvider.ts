@@ -1,9 +1,8 @@
-import FileCatalog from '../FileCatalog';
+import FileCatalog from '../core/FileCatalog';
+import { storageService } from '../core/StorageService'; // Importa a instância única
 import HashService from '../services/HashService';
-import StorageService from '../services/StorageService';
 
 const hasher = new HashService();
-const storage = new StorageService();
-const Catalog = new FileCatalog(hasher, storage);
+const Catalog = new FileCatalog(hasher, storageService);
 
 export default Catalog;

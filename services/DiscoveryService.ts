@@ -1,5 +1,5 @@
 import dgram from 'dgram';
-import { PeerInfo, PeerIdentity, PeerMsg } from './interfaces';
+import { PeerInfo, PeerIdentity, PeerMsg } from '../interfaces/peer.interfaces';
 import { EventEmitter } from 'events';
 
 export default class DiscoveryService extends EventEmitter {

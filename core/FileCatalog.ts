@@ -1,4 +1,4 @@
-import { FileMetadata } from './interfaces';
+import { FileMetadata } from '../interfaces';
 import { EventEmitter } from 'events';
 import { ulid } from 'ulid';
 import chokidar from 'chokidar';
@@ -19,12 +19,6 @@ interface IHash {
 class FileCatalog extends EventEmitter {
   private readonly hasher: IHash;
   private readonly storage: IStorage;
-
-  private readonly dataFile = path.resolve(
-    __dirname,
-    'json',
-    'files-metadata.json',
-  );
 
   private index = new Map<string, FileMetadata>(); // fileId -> metadata
   private hashIndex = new Map<string, string>(); // hash -> fileId
@@ -49,7 +43,7 @@ class FileCatalog extends EventEmitter {
       throw new Error(`Falha em carregar base de dados`);
     }
 
-    const arr: FileMetadata[] = await fse.readJson(this.dataFile);
+    const arr: FileMetadata[] = await this.storage.load();
 
     for (const f of arr) {
       this.index.set(f.fileId, f);
@@ -112,7 +106,7 @@ class FileCatalog extends EventEmitter {
     const dataToSave = Array.from(this.index.values());
     const isSave = await this.storage.save(dataToSave);
 
-    if (isSave) {
+    if (!isSave) {
       throw new Error(`Falha em atualizar base de dados`);
     }
 
@@ -175,33 +169,11 @@ class FileCatalog extends EventEmitter {
 
   // Método para externalizar a data do server
   public async fetchServerFiles(): Promise<FileMetadata[]> {
-    try {
-      const jsonData: FileMetadata[] = await fse.readJson(this.dataFile);
-
-      if (jsonData.length === 0) return [];
-
-      return jsonData;
-    } catch (e) {
-      console.error(`Falha em recuperar dados: `, e);
-      return [];
-    }
+    return Array.from(this.index.values());
   }
 
   public async fetchFile(fileId: string): Promise<FileMetadata | null> {
-    try {
-      const data = await this.fetchServerFiles();
-      const file = data.find((f) => f.fileId == fileId);
-
-      if (!file) {
-        console.log('Arquivos disponíveis:', JSON.stringify(data, null, 2));
-        return null;
-      }
-
-      return file;
-    } catch (e) {
-      console.error(`Falha em filtrar capítulo individual: `, e);
-      return null;
-    }
+    return this.index.get(fileId) || null;
   }
 
   private writeLock: Promise<void> = Promise.resolve();

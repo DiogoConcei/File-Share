@@ -1,5 +1,6 @@
+import { IncomingHttpHeaders } from 'http';
 import express, { Express } from 'express';
-import fse from 'fs-extra';
+import { FilePackage } from './interfaces/fileMetadata.interfaces';
 import HashService from './services/HashService';
 import StreamProcessor from './services/StreamProcessor';
 import Catalog from './providers/CatalogProvider';
@@ -9,11 +10,9 @@ export default class FileHttpApi {
   private readonly hashService: HashService = new HashService();
   private app: Express;
   private port: number;
-  private dataFile: string;
 
-  constructor(port: number, dataFile: string) {
+  constructor(port: number) {
     this.port = port;
-    this.dataFile = dataFile;
     this.app = express();
 
     this.setupRoutes();
@@ -22,35 +21,17 @@ export default class FileHttpApi {
   private setupRoutes() {
     // Get com todos os arquivos
     this.app.get('/', async (_req, res) => {
-      try {
-        const data = await fse.readJson(this.dataFile, { encoding: 'utf8' });
+      const data = await Catalog.fetchServerFiles();
 
-        return res.status(200).json(data);
-      } catch (e: any) {
-        if (e.code === 'ENOENT') {
-          return res.status(404).json({
-            error: 'Arquivo não encontrado',
-          });
-        }
-
-        return res.status(500).json({
-          error: 'Erro ao ler o arquivo',
-        });
-      }
+      return res.status(200).json(data);
     });
 
     // Get com um único arquivo
     this.app.get('/:ulid/download', async (req, res) => {
       console.log('[HTTP] pedido de download:', req.params.ulid);
-      console.log('[HTTP] dataFile:', this.dataFile);
+      const id = req.params.ulid;
 
-      const data = await fse.readJson(this.dataFile);
-      console.log(
-        '[HTTP] arquivos conhecidos:',
-        data.map((f: any) => f.fileId),
-      );
-
-      const file = data.find((f: any) => f.fileId === req.params.ulid);
+      const file = await Catalog.fetchFile(id);
 
       if (!file) {
         console.log('[HTTP] fileId NÃO encontrado');
@@ -65,18 +46,21 @@ export default class FileHttpApi {
     // FileHttpApi.ts
     this.app.post('/upload', async (req, res) => {
       try {
-        const { fileid, name, ext, hash } = req.headers as any;
+        const filePkg: FilePackage | null = await this.extractFilePackage(
+          req.headers,
+        );
 
-        if (!fileid || !name || !ext || !hash) {
-          res.status(400).json({ error: 'Headers ausentes' });
-          return;
+        if (!filePkg) {
+          throw new Error(
+            `Falha no recebimento de dados atraves da requisicao`,
+          );
         }
 
-        const fileName = `${name}${ext}`;
+        const fileName = `${filePkg.name}${filePkg.ext}`;
 
         const filePath = await this.streamProcessor.saveStream(req, fileName);
 
-        const ok = await this.hashService.isHashed(hash, filePath);
+        const ok = await this.hashService.isHashed(filePkg.hash, filePath);
 
         if (!ok) {
           res.status(400).json({ error: 'Hash mismatch' });
@@ -91,6 +75,26 @@ export default class FileHttpApi {
         res.status(500).json({ error: 'Falha no upload' });
       }
     });
+  }
+
+  private ensureString(value: string | string[] | undefined): string {
+    if (Array.isArray(value)) {
+      return value[0] || '';
+    }
+    return value ?? '';
+  }
+
+  private extractFilePackage(headers: IncomingHttpHeaders): FilePackage | null {
+    const pkg: FilePackage = {
+      fileid: this.ensureString(headers['fileid']),
+      name: this.ensureString(headers['name']),
+      ext: this.ensureString(headers['ext']),
+      hash: this.ensureString(headers['hash']),
+    };
+
+    const isValid = Object.values(pkg).every((val) => val.length > 0);
+
+    return isValid ? pkg : null;
   }
 
   start() {

@@ -6,7 +6,7 @@ interface SystemError {
   code: string;
 }
 
-export default class StorageService {
+class StorageService {
   private readonly dataFile = path.resolve(
     __dirname,
     'json',
@@ -57,3 +57,5 @@ export default class StorageService {
     return typeof error === 'object' && error !== null && 'code' in error;
   }
 }
+
+export const storageService = new StorageService();
