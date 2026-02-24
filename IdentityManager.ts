@@ -9,7 +9,7 @@ export default class IdentityManager extends EventEmitter {
   private static readonly identityPath = path.resolve(
     process.cwd(),
     "json",
-    "identity.json"
+    "identity.json",
   );
 
   static async loadOrCreate(): Promise<PeerIdentity> {

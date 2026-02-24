@@ -1,64 +1,75 @@
-import { FileMetadata } from "./interfaces";
+import { FileMetadata } from './interfaces';
+import { EventEmitter } from 'events';
+import { ulid } from 'ulid';
+import chokidar from 'chokidar';
+import path from 'path';
+import fse from 'fs-extra';
+import PLimit from 'p-limit';
 
-import { EventEmitter } from "events";
-import { ulid } from "ulid";
-import crypto from "crypto";
-import chokidar from "chokidar";
-import path from "path";
-import fse from "fs-extra";
-import { Readable } from "stream";
-import { pipeline } from "node:stream/promises";
-import PLimit from "p-limit";
+interface IStorage {
+  load(): Promise<FileMetadata[]>;
+  save(meta: FileMetadata[]): Promise<boolean>;
+}
 
-export default class FileCatalog extends EventEmitter {
-  private readonly baseDir = path.resolve(__dirname, "files");
-  private readonly progressDir = path.resolve(__dirname, ".inprogress");
+interface IHash {
+  hashFile(filePath: string): Promise<string>;
+  isHashed(fileHash: string, newPath: string): Promise<boolean>;
+}
+
+class FileCatalog extends EventEmitter {
+  private readonly hasher: IHash;
+  private readonly storage: IStorage;
+
   private readonly dataFile = path.resolve(
     __dirname,
-    "json",
-    "files-metadata.json",
+    'json',
+    'files-metadata.json',
   );
+
   private index = new Map<string, FileMetadata>(); // fileId -> metadata
   private hashIndex = new Map<string, string>(); // hash -> fileId
   private pathIndex = new Map<string, string>(); // path -> fileId
   private limitHash = PLimit(5);
 
+  constructor(hasher: IHash, storage: IStorage) {
+    super();
+
+    if (!hasher || !storage) {
+      throw new Error(`Falha em inicializar FileCatalog`);
+    }
+
+    this.hasher = hasher;
+    this.storage = storage;
+  }
+
   async start() {
-    await this.loadIndex();
+    const isLoad = await this.storage.load();
+
+    if (!isLoad) {
+      throw new Error(`Falha em carregar base de dados`);
+    }
+
+    const arr: FileMetadata[] = await fse.readJson(this.dataFile);
+
+    for (const f of arr) {
+      this.index.set(f.fileId, f);
+      this.hashIndex.set(f.hash, f.fileId);
+      this.pathIndex.set(f.path, f.fileId);
+    }
+
     this.startWatching();
   }
 
-  private async loadIndex() {
-    try {
-      const arr: FileMetadata[] = await fse.readJson(this.dataFile);
-
-      for (const f of arr) {
-        this.index.set(f.fileId, f);
-        this.hashIndex.set(f.hash, f.fileId);
-        this.pathIndex.set(f.path, f.fileId);
-      }
-    } catch (e) {
-      await this.persistIndex();
-    }
-  }
-
-  private async persistIndex() {
-    await fse.writeJson(this.dataFile + ".tmp", [...this.index.values()], {
-      spaces: 2,
-    });
-    await fse.move(this.dataFile + ".tmp", this.dataFile, { overwrite: true });
-  }
-
   private startWatching() {
-    const watcher = chokidar.watch(this.baseDir, {
+    const watcher = chokidar.watch(path.resolve(__dirname, 'files'), {
       ignoreInitial: true,
       persistent: true,
       awaitWriteFinish: { stabilityThreshold: 1500, pollInterval: 100 },
-      ignored: ["**/.inprogress/**"],
+      ignored: ['**/.inprogress/**'],
     });
 
-    watcher.on("add", (p) => this.onAdd(p));
-    watcher.on("unlink", (p) => this.onRemove(p));
+    watcher.on('add', (p) => this.onAdd(p));
+    watcher.on('unlink', (p) => this.onRemove(p));
   }
 
   public async onAdd(filePath: string) {
@@ -67,7 +78,7 @@ export default class FileCatalog extends EventEmitter {
       const fileMeta = await this.limitHash(() => this.registerFile(filePath));
 
       if (fileMeta) {
-        this.emit("file:added", fileMeta);
+        this.emit('file:added', fileMeta);
       }
     });
   }
@@ -76,15 +87,13 @@ export default class FileCatalog extends EventEmitter {
     return this.withWriteLock(async () => {
       const fileMeta = await this.unlinkFile(filePath);
       if (fileMeta) {
-        this.emit("file:removed", fileMeta);
+        this.emit('file:removed', fileMeta);
       }
     });
   }
 
   private async unlinkFile(filePath: string): Promise<FileMetadata> {
     const fileId = this.pathIndex.get(filePath);
-
-    console.log(`${filePath} has been deleted`);
 
     if (!fileId) {
       throw new Error(`Falha em encontrar o arquivo ${filePath}`);
@@ -99,28 +108,40 @@ export default class FileCatalog extends EventEmitter {
     this.index.delete(fileId);
     this.hashIndex.delete(metadata.hash);
     this.pathIndex.delete(filePath);
-    await this.persistIndex();
+
+    const dataToSave = Array.from(this.index.values());
+    const isSave = await this.storage.save(dataToSave);
+
+    if (isSave) {
+      throw new Error(`Falha em atualizar base de dados`);
+    }
 
     return metadata;
   }
 
   public async registerFile(filePath: string): Promise<FileMetadata> {
     const [hash, stat] = await Promise.all([
-      this.hashFile(filePath),
+      this.hasher.hashFile(filePath),
       fse.stat(filePath),
     ]);
 
     if (this.hashIndex.has(hash)) {
-      const existingId = this.hashIndex.get(hash)!;
+      const existingId = this.hashIndex.get(hash);
+
+      if (!existingId) {
+        throw new Error('Falha durante o calculo  de hash');
+      }
+
       const existing = this.index.get(existingId);
 
       if (!existing) {
-        throw new Error("Falha durante o calculo  de hash");
+        throw new Error('Falha durante o calculo  de hash');
       }
 
       if (existing.path !== filePath) {
         existing.path = filePath;
-        await this.persistIndex();
+
+        this.index.set(existing.fileId, existing);
       }
 
       return existing;
@@ -132,49 +153,24 @@ export default class FileCatalog extends EventEmitter {
       ext: path.extname(filePath),
       hash,
       path: filePath,
-      isDownloaded: "not_downloaded",
-      isSync: "unsynchronized",
-      privacy: "public",
+      isDownloaded: 'not_downloaded',
+      isSync: 'unsynchronized',
+      privacy: 'public',
       size: stat.size,
     };
 
     this.index.set(meta.fileId, meta);
     this.hashIndex.set(hash, meta.fileId);
     this.pathIndex.set(meta.path, meta.fileId);
-    await this.persistIndex();
+
+    const dataToSave = Array.from(this.index.values());
+    const isSave = await this.storage.save(dataToSave);
+
+    if (isSave) {
+      throw new Error(`Falha em atualizar base de dados`);
+    }
 
     return meta;
-  }
-
-  public async hashFile(filePath: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const hash = crypto.createHash("sha256");
-      const rs = fse.createReadStream(filePath);
-      rs.on("data", (c) => hash.update(c));
-      rs.on("end", () => resolve(hash.digest("hex")));
-      rs.on("error", reject);
-    });
-  }
-
-  // Método para salvar o chunk que a api envia
-  public async saveStream(stream: Readable, fileName: string) {
-    const filePath = path.join(this.progressDir, fileName);
-    const finalPath = path.join(this.baseDir, fileName);
-    await pipeline(stream, fse.createWriteStream(filePath));
-    await fse.move(filePath, finalPath);
-    return finalPath;
-  }
-
-  // Método para comparar o  hash entre o arquivo recebido e o presente
-  public async checkHash(fileHash: string, newPath: string): Promise<boolean> {
-    try {
-      const calcHash = await this.hashFile(newPath);
-      if (fileHash !== calcHash) return false;
-      return true;
-    } catch (e) {
-      console.error(`Falha em verificar integridade do arquivo: `, e);
-      return false;
-    }
   }
 
   // Método para externalizar a data do server
@@ -197,7 +193,7 @@ export default class FileCatalog extends EventEmitter {
       const file = data.find((f) => f.fileId == fileId);
 
       if (!file) {
-        console.log("Arquivos disponíveis:", JSON.stringify(data, null, 2));
+        console.log('Arquivos disponíveis:', JSON.stringify(data, null, 2));
         return null;
       }
 
@@ -206,20 +202,6 @@ export default class FileCatalog extends EventEmitter {
       console.error(`Falha em filtrar capítulo individual: `, e);
       return null;
     }
-  }
-
-  public async getReadStream(fileId: string): Promise<Readable> {
-    const meta = await this.fetchFile(fileId);
-
-    if (!meta) {
-      throw new Error(`Arquivo não encontrado no catálogo: ${fileId}`);
-    }
-
-    if (!(await fse.pathExists(meta.path))) {
-      throw new Error(`Arquivo não existe no disco: ${meta.path}`);
-    }
-
-    return fse.createReadStream(meta.path);
   }
 
   private writeLock: Promise<void> = Promise.resolve();
@@ -239,3 +221,5 @@ export default class FileCatalog extends EventEmitter {
     }
   }
 }
+
+export default FileCatalog;

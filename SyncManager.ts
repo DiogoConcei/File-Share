@@ -20,7 +20,7 @@ export default class SyncManager extends EventEmitter {
   private readonly syncData = path.resolve(
     __dirname,
     "json",
-    "sync-metadata.json"
+    "sync-metadata.json",
   );
   private readonly peers = new Map<string, PeerState>();
 
@@ -95,7 +95,7 @@ export default class SyncManager extends EventEmitter {
     const existing = this.peers.get(peer.id);
     if (!existing) {
       this.addPeer(peer).catch((err) =>
-        console.error("Erro ao adicionar peer:", err)
+        console.error("Erro ao adicionar peer:", err),
       );
     } else {
       this.updatePeerInfo(peer);

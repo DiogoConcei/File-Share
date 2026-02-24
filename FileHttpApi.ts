@@ -1,11 +1,14 @@
-import express, { Express } from "express";
-import fse from "fs-extra";
-import FileCatalog from "./FileCatalog";
+import express, { Express } from 'express';
+import fse from 'fs-extra';
+import HashService from './services/HashService';
+import StreamProcessor from './services/StreamProcessor';
+import Catalog from './providers/CatalogProvider';
 
 export default class FileHttpApi {
+  private readonly streamProcessor: StreamProcessor = new StreamProcessor();
+  private readonly hashService: HashService = new HashService();
   private app: Express;
   private port: number;
-  private readonly fileCatalog = new FileCatalog();
   private dataFile: string;
 
   constructor(port: number, dataFile: string) {
@@ -18,74 +21,74 @@ export default class FileHttpApi {
 
   private setupRoutes() {
     // Get com todos os arquivos
-    this.app.get("/", async (_req, res) => {
+    this.app.get('/', async (_req, res) => {
       try {
-        const data = await fse.readJson(this.dataFile, { encoding: "utf8" });
+        const data = await fse.readJson(this.dataFile, { encoding: 'utf8' });
 
-        res.status(200).json(data);
+        return res.status(200).json(data);
       } catch (e: any) {
-        if (e.code === "ENOENT") {
+        if (e.code === 'ENOENT') {
           return res.status(404).json({
-            error: "Arquivo não encontrado",
+            error: 'Arquivo não encontrado',
           });
         }
 
         return res.status(500).json({
-          error: "Erro ao ler o arquivo",
+          error: 'Erro ao ler o arquivo',
         });
       }
     });
 
     // Get com um único arquivo
-    this.app.get("/:ulid/download", async (req, res) => {
-      console.log("[HTTP] pedido de download:", req.params.ulid);
-      console.log("[HTTP] dataFile:", this.dataFile);
+    this.app.get('/:ulid/download', async (req, res) => {
+      console.log('[HTTP] pedido de download:', req.params.ulid);
+      console.log('[HTTP] dataFile:', this.dataFile);
 
       const data = await fse.readJson(this.dataFile);
       console.log(
-        "[HTTP] arquivos conhecidos:",
+        '[HTTP] arquivos conhecidos:',
         data.map((f: any) => f.fileId),
       );
 
       const file = data.find((f: any) => f.fileId === req.params.ulid);
 
       if (!file) {
-        console.log("[HTTP] fileId NÃO encontrado");
+        console.log('[HTTP] fileId NÃO encontrado');
         res.status(404).end();
         return;
       }
 
-      console.log("[HTTP] enviando arquivo:", file.path);
+      console.log('[HTTP] enviando arquivo:', file.path);
       res.download(file.path);
     });
 
     // FileHttpApi.ts
-    this.app.post("/upload", async (req, res) => {
+    this.app.post('/upload', async (req, res) => {
       try {
         const { fileid, name, ext, hash } = req.headers as any;
 
         if (!fileid || !name || !ext || !hash) {
-          res.status(400).json({ error: "Headers ausentes" });
+          res.status(400).json({ error: 'Headers ausentes' });
           return;
         }
 
         const fileName = `${name}${ext}`;
 
-        const filePath = await this.fileCatalog.saveStream(req, fileName);
+        const filePath = await this.streamProcessor.saveStream(req, fileName);
 
-        const ok = await this.fileCatalog.checkHash(hash, filePath);
+        const ok = await this.hashService.isHashed(hash, filePath);
 
         if (!ok) {
-          res.status(400).json({ error: "Hash mismatch" });
+          res.status(400).json({ error: 'Hash mismatch' });
           return;
         }
 
-        await this.fileCatalog.registerFile(filePath);
+        await Catalog.registerFile(filePath);
 
         res.status(200).json({ ok: true });
       } catch (e) {
-        console.error("[HTTP] erro no upload:", e);
-        res.status(500).json({ error: "Falha no upload" });
+        console.error('[HTTP] erro no upload:', e);
+        res.status(500).json({ error: 'Falha no upload' });
       }
     });
   }

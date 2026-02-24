@@ -1,11 +1,13 @@
-import axios from "axios";
-import FileCatalog from "./FileCatalog";
-import fse from "fs-extra";
-import { Readable } from "stream";
-import { FileMetadata, DiffData } from "./interfaces";
-
+import axios from 'axios';
+import Catalog from './providers/CatalogProvider';
+import HashService from './services/HashService';
+import StreamProcessor from './services/StreamProcessor';
+import { Readable } from 'stream';
+import { FileMetadata } from './interfaces';
 export default class PeerApi {
-  private readonly fileCatalog = new FileCatalog();
+  private readonly streamProcessor: StreamProcessor = new StreamProcessor();
+  private readonly hashService: HashService = new HashService();
+
   private readonly address: string;
   private readonly port: number;
 
@@ -16,31 +18,34 @@ export default class PeerApi {
 
   public async requestFile(file: FileMetadata) {
     console.log(
-      `[PEER API] requisitando arquivo ${file.fileId} de ${this.address}:${this.port}`
+      `[PEER API] requisitando arquivo ${file.fileId} de ${this.address}:${this.port}`,
     );
 
     const url = `http://${this.address}:${this.port}/${file.fileId}/download`;
 
     // 🔽 aqui está a diferença-chave
     const response = await axios.get<Readable>(url, {
-      responseType: "stream",
+      responseType: 'stream',
     });
 
     const fileName = file.name + file.ext;
 
     // salva stream localmente
-    const filePath = await this.fileCatalog.saveStream(response.data, fileName);
+    const filePath = await this.streamProcessor.saveStream(
+      response.data,
+      fileName,
+    );
 
     // valida integridade
-    const ok = await this.fileCatalog.checkHash(file.hash, filePath);
+    const ok = await this.hashService.isHashed(file.hash, filePath);
     if (!ok) {
-      throw new Error("Hash mismatch após download");
+      throw new Error('Hash mismatch após download');
     }
 
     // registra no catálogo local
-    await this.fileCatalog.registerFile(filePath);
+    await Catalog.registerFile(filePath);
 
-    console.log("[PEER API] arquivo sincronizado com sucesso");
+    console.log('[PEER API] arquivo sincronizado com sucesso');
   }
 
   public async fetchPeerFiles(): Promise<FileMetadata[]> {
@@ -60,14 +65,14 @@ export default class PeerApi {
 
   public async sendFile(file: FileMetadata) {
     console.log(
-      `[PEER API] enviando arquivo ${file.fileId} para ${this.address}:${this.port}`
+      `[PEER API] enviando arquivo ${file.fileId} para ${this.address}:${this.port}`,
     );
 
-    const stream = await this.fileCatalog.getReadStream(file.fileId);
+    const stream = await this.streamProcessor.getReadStream(file.fileId);
 
     await axios.post(`http://${this.address}:${this.port}/upload`, stream, {
       headers: {
-        "Content-Type": "application/octet-stream",
+        'Content-Type': 'application/octet-stream',
         fileid: file.fileId,
         name: file.name,
         ext: file.ext,
@@ -75,7 +80,7 @@ export default class PeerApi {
       },
     });
 
-    console.log("[PEER API] upload concluído");
+    console.log('[PEER API] upload concluído');
   }
 
   // public async compareFiles(): Promise<DiffData> {

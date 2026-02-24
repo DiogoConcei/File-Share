@@ -1,15 +1,15 @@
-import dgram from "dgram";
-import { PeerInfo, PeerIdentity, PeerMsg } from "./interfaces";
-import { EventEmitter } from "events";
+import dgram from 'dgram';
+import { PeerInfo, PeerIdentity, PeerMsg } from './interfaces';
+import { EventEmitter } from 'events';
 
 export default class DiscoveryService extends EventEmitter {
-  private readonly multicastGroup = "239.255.0.1";
+  private readonly multicastGroup = '239.255.0.1';
   private readonly discoveryPort: number;
   private readonly httpPort: number;
   private readonly identity: PeerIdentity;
 
   private readonly socket = dgram.createSocket({
-    type: "udp4",
+    type: 'udp4',
     reuseAddr: true,
   });
 
@@ -24,19 +24,19 @@ export default class DiscoveryService extends EventEmitter {
   }
 
   private setupSocket() {
-    this.socket.on("listening", () => {
+    this.socket.on('listening', () => {
       this.socket.addMembership(this.multicastGroup);
       this.socket.setMulticastTTL(1);
 
-      this.emit("ready", this.identity.peerId);
+      this.emit('ready', this.identity.peerId);
     });
 
-    this.socket.on("message", (msg, rinfo) => {
+    this.socket.on('message', (msg, rinfo) => {
       this.handleMessage(msg, rinfo);
     });
 
-    this.socket.on("error", (err) => {
-      this.emit("error", err);
+    this.socket.on('error', (err) => {
+      this.emit('error', err);
     });
   }
 
@@ -56,12 +56,12 @@ export default class DiscoveryService extends EventEmitter {
   private announce() {
     const payload = Buffer.from(
       JSON.stringify({
-        type: "ANNOUNCE",
+        type: 'ANNOUNCE',
         peerId: this.identity.peerId,
         name: this.identity.displayName,
         port: this.httpPort,
         timeStamp: Date.now(),
-      })
+      }),
     );
 
     this.socket.send(payload, this.discoveryPort, this.multicastGroup);
@@ -76,7 +76,7 @@ export default class DiscoveryService extends EventEmitter {
       return;
     }
 
-    if (!data || data.type !== "ANNOUNCE") return;
+    if (!data || data.type !== 'ANNOUNCE') return;
 
     if (data.peerId === this.identity.peerId) return;
 
@@ -88,6 +88,6 @@ export default class DiscoveryService extends EventEmitter {
       lastSeen: Date.now(),
     };
 
-    this.emit("peer:seen", peer);
+    this.emit('peer:seen', peer);
   }
 }
