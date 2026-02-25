@@ -23,26 +23,22 @@ export default class PeerApi {
 
     const url = `http://${this.address}:${this.port}/${file.fileId}/download`;
 
-    // 🔽 aqui está a diferença-chave
     const response = await axios.get<Readable>(url, {
       responseType: 'stream',
     });
 
     const fileName = file.name + file.ext;
 
-    // salva stream localmente
     const filePath = await this.streamProcessor.saveStream(
       response.data,
       fileName,
     );
 
-    // valida integridade
     const ok = await this.hashService.isHashed(file.hash, filePath);
     if (!ok) {
       throw new Error('Hash mismatch após download');
     }
 
-    // registra no catálogo local
     await Catalog.registerFile(filePath, { origin: 'network' });
 
     console.log('[PEER API] arquivo sincronizado com sucesso');

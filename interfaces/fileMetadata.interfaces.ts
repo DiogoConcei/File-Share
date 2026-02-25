@@ -16,6 +16,17 @@ export interface FileAddedEvent {
   origin: 'local' | 'network';
 }
 
+export interface FileRemoveEvent {
+  fileMeta: FileMetadata;
+  origin: 'local' | 'network';
+  timeStamp: string;
+}
+
+export interface FileSyncEvent {
+  fileMeta: FileMetadata;
+  origin: 'local' | 'network';
+}
+
 export interface FilePackage {
   fileid: string;
   name: string;

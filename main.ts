@@ -32,9 +32,7 @@ async function main() {
   });
 
   Catalog.on('file:added', ({ fileMeta, origin }: FileAddedEvent) => {
-    if (origin === 'network') {
-      return;
-    }
+    if (origin === 'network') return;
 
     syncManager.emit('file:added', fileMeta);
   });

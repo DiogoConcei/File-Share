@@ -124,12 +124,20 @@ class FileCatalog extends EventEmitter {
       ext: path.extname(filePath),
       hash,
       path: filePath,
-      isDownloaded: 'not_downloaded',
-      isSync: 'unsynchronized',
+      isDownloaded: origin === 'local' ? 'not_downloaded' : 'downloaded',
+      isSync: origin === 'local' ? 'unsynchronized' : 'synchronized',
       privacy: 'public',
       origin,
       size: stat.size,
     };
+
+    // if (origin === 'network') {
+    //   meta = {
+    //     ...meta,
+    //     isDownloaded: 'downloaded',
+    //     isSync: 'synchronized',
+    //   };
+    // }
 
     this.index.set(meta.fileId, meta);
     this.hashIndex.set(hash, meta.fileId);
