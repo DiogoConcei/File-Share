@@ -1,5 +1,5 @@
 import FileCatalog from '../core/FileCatalog';
-import { storageService } from '../core/StorageService'; // Importa a instância única
+import { storageService } from '../core/StorageService';
 import HashService from '../services/HashService';
 
 const hasher = new HashService();

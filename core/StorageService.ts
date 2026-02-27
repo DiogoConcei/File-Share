@@ -1,6 +1,6 @@
-import { FileMetadata } from '../interfaces/fileMetadata.interfaces';
 import fse from 'fs-extra';
 import path from 'path';
+import { DataPackage } from '../interfaces/dataPackage.interface';
 
 interface SystemError {
   code: string;
@@ -20,7 +20,7 @@ class StorageService {
     'files-metadata-backup.json',
   );
 
-  public async load(): Promise<FileMetadata[]> {
+  public async load(): Promise<DataPackage[]> {
     try {
       return await fse.readJson(this.dataFile);
     } catch (error) {
@@ -39,7 +39,7 @@ class StorageService {
     }
   }
 
-  public async save(files: FileMetadata[]): Promise<boolean> {
+  public async save(files: DataPackage[]): Promise<boolean> {
     const tmpFile = this.dataFile + '.tmp';
 
     try {

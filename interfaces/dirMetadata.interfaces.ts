@@ -1,26 +1,13 @@
-export interface FileMetadata {
+export interface DirMetadata {
   id: string;
   name: string;
-  ext: string;
   parentId: string;
+  childId: string[];
   hash: string;
   size: number;
   privacy: 'public' | 'private';
   isDownloaded: 'not_downloaded' | 'downloaded' | 'downloading';
   isSync: 'synchronized' | 'synchronizing' | 'unsynchronized';
   origin?: 'local' | 'network';
-  type: 'file';
-}
-
-export interface FilePackage {
-  fileid: string;
-  name: string;
-  ext: string;
-  hash: string;
-}
-
-export interface DiffData {
-  inPeer: FileMetadata[];
-  inServer: FileMetadata[];
-  sync: FileMetadata[];
+  type: 'dir';
 }

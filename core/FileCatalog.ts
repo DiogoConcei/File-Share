@@ -1,4 +1,6 @@
 import { FileMetadata } from '../interfaces/fileMetadata.interfaces';
+import { DirMetadata } from '../interfaces/dirMetadata.interfaces';
+import { DataPackage } from '../interfaces/dataPackage.interface';
 import { EventEmitter } from 'events';
 import { ulid } from 'ulid';
 import chokidar from 'chokidar';
@@ -7,8 +9,8 @@ import fse from 'fs-extra';
 import PLimit from 'p-limit';
 
 interface IStorage {
-  load(): Promise<FileMetadata[]>;
-  save(meta: FileMetadata[]): Promise<boolean>;
+  load(): Promise<DataPackage[]>;
+  save(meta: DataPackage[]): Promise<boolean>;
 }
 
 interface IHash {
@@ -19,11 +21,20 @@ interface IHash {
 class FileCatalog extends EventEmitter {
   private readonly hasher: IHash;
   private readonly storage: IStorage;
+  private eventQueue: { type: 'dir' | 'file'; itemPath: string }[] = [];
+  private queueTimeout: NodeJS.Timeout | null = null;
 
-  private index = new Map<string, FileMetadata>(); // fileId -> metadata
+  private index = new Map<string, DataPackage>(); // id -> item
+  private pathIndex = new Map<string, string>();
+
+  private fileIndex = new Map<string, FileMetadata>(); // fileId -> fileMetadata
   private hashIndex = new Map<string, string>(); // hash -> fileId
-  private pathIndex = new Map<string, string>(); // path -> fileId
+
+  private dirIndex = new Map<string, DirMetadata>(); // parentId -> dirMetadata
+  private parentIndex = new Map<string, string>(); // fileId (childId) -> parentId
+
   private networkImportedPaths = new Set<string>();
+
   private limitHash = PLimit(5);
 
   constructor(hasher: IHash, storage: IStorage) {
@@ -38,12 +49,25 @@ class FileCatalog extends EventEmitter {
   }
 
   async start() {
-    const arr: FileMetadata[] = await this.storage.load();
+    const arr: DataPackage[] = await this.storage.load();
 
-    for (const f of arr) {
-      this.index.set(f.fileId, f);
-      this.hashIndex.set(f.hash, f.fileId);
-      this.pathIndex.set(f.path, f.fileId);
+    for (const dt of arr) {
+      if (dt.type === 'file') {
+        this.fileIndex.set(dt.id, dt);
+        this.hashIndex.set(dt.hash, dt.id);
+        this.parentIndex.set(dt.id, dt.parentId);
+      } else if (dt.type === 'dir') {
+        this.dirIndex.set(dt.id, dt);
+      }
+
+      this.index.set(dt.id, dt);
+    }
+
+    for (const dt of arr) {
+      const absolutePath = this.buildPath(dt.id);
+
+      // "C:\...\files\fotos\praia.jpg" -> "ID-DA-PRAIA"
+      this.pathIndex.set(absolutePath, dt.id);
     }
 
     this.startWatching();
@@ -58,8 +82,75 @@ class FileCatalog extends EventEmitter {
       ignored: ['**/.inprogress/**'],
     });
 
-    watcher.on('add', (p) => this.onAdd(p));
+    watcher.on('addDir', (p) => this.queueEvent('dir', p));
+    watcher.on('add', (p) => this.queueEvent('file', p));
     watcher.on('unlink', (p) => this.onRemove(p));
+  }
+
+  private queueEvent(type: 'dir' | 'file', itemPath: string) {
+    this.eventQueue.push({ type, itemPath });
+
+    if (this.queueTimeout) {
+      clearTimeout(this.queueTimeout);
+    }
+
+    this.queueTimeout = setTimeout(() => {
+      this.processQueue();
+    }, 250);
+  }
+
+  private async processQueue() {
+    const items = [...this.eventQueue];
+    this.eventQueue = [];
+
+    items.sort((a, b) => {
+      if (a.type === 'dir' && b.type === 'file') return -1;
+      if (a.type === 'file' && b.type === 'dir') return 1;
+      return 0;
+    });
+
+    for (const item of items) {
+      if (item.type === 'dir') {
+        this.onAddDir(item.itemPath);
+      } else {
+        this.onAdd(item.itemPath);
+      }
+    }
+  }
+
+  public buildPath(targetId: string): string {
+    let currentId = targetId;
+
+    const pathSegments: string[] = [];
+
+    while (currentId) {
+      const item = this.index.get(currentId);
+
+      if (!item) break;
+
+      pathSegments.unshift(item.name);
+
+      currentId = item.parentId;
+    }
+
+    return path.resolve(process.cwd(), 'files', ...pathSegments);
+  }
+
+  public async onAddDir(dirPath: string) {
+    return this.withWriteLock(async () => {
+      if (this.networkImportedPaths.has(dirPath)) {
+        this.networkImportedPaths.delete(dirPath);
+        return;
+      }
+
+      const dirMetadata = await this.limitHash(() => {
+        this.registerDir(dirPath, { origin: 'network' });
+      });
+
+      if (dirMetadata) {
+        this.emit('node:added', { dirMetadata, origin: 'network' });
+      }
+    });
   }
 
   public async onAdd(filePath: string) {
@@ -74,9 +165,92 @@ class FileCatalog extends EventEmitter {
       );
 
       if (fileMeta) {
-        this.emit('file:added', { fileMeta, origin: 'local' });
+        this.emit('node:added', { fileMeta, origin: 'local' });
       }
     });
+  }
+
+  public async registerDir(
+    dirPath: string,
+    options: { origin?: 'local' | 'network' } = {},
+  ): Promise<DirMetadata> {
+    const origin = options.origin ?? 'local';
+
+    if (origin === 'network') {
+      this.networkImportedPaths.add(dirPath);
+    }
+
+    // 1. Evita duplicidade se o SO disparar o evento duas vezes
+    if (this.pathIndex.has(dirPath)) {
+      const existingId = this.pathIndex.get(dirPath);
+      if (existingId) {
+        return this.index.get(existingId) as DirMetadata;
+      }
+    }
+
+    // 2. Descobrindo quem é o Pai
+    const parentPath = path.dirname(dirPath);
+    const rootPath = path.resolve(process.cwd(), 'files');
+
+    let parentId = '';
+
+    // Se o pai não for a pasta raiz 'files', nós buscamos o ID dele no nosso tradutor
+    if (parentPath !== rootPath) {
+      parentId = this.pathIndex.get(parentPath) || '';
+
+      if (!parentId) {
+        console.warn(
+          `[Aviso] Pasta pai não encontrada no índice para: ${dirPath}`,
+        );
+      }
+    }
+
+    // Usamos path.basename em vez de parsed.name.
+    // Motivo: Se uma pasta se chamar "v1.0", o path.parse divide em name:"v1" e ext:".0".
+    // O path.basename pega o nome da pasta inteiro corretamente.
+    const dirMeta: DirMetadata = {
+      id: ulid(),
+      parentId: parentId,
+      name: path.basename(dirPath),
+      size: 0,
+      hash: '', // O hash nasce vazio, será montado depois pelos arquivos filhos
+      childId: [],
+      isDownloaded: origin === 'local' ? 'not_downloaded' : 'downloaded',
+      isSync: origin === 'local' ? 'unsynchronized' : 'synchronized',
+      privacy: 'public',
+      type: 'dir',
+      origin,
+    };
+
+    // 3. Atualizando a pasta Pai (Adicionando este novo diretório aos filhos dela)
+    if (parentId) {
+      const parentMeta = this.index.get(parentId);
+
+      if (parentMeta && parentMeta.type === 'dir') {
+        parentMeta.childId.push(dirMeta.id);
+
+        // Atualiza o pai modificado na memória
+        this.index.set(parentId, parentMeta);
+        this.dirIndex.set(parentId, parentMeta);
+      }
+    }
+
+    // 4. Registrando o novo diretório nos índices globais
+    this.index.set(dirMeta.id, dirMeta);
+    this.dirIndex.set(dirMeta.id, dirMeta);
+    this.pathIndex.set(dirPath, dirMeta.id);
+
+    // 5. Persistindo o "universo" inteiro no banco de dados JSON
+    const dataToSave = Array.from(this.index.values());
+    const isSave = await this.storage.save(dataToSave);
+
+    if (!isSave) {
+      throw new Error(
+        `Falha em atualizar base de dados ao salvar o diretório ${dirMeta.name}`,
+      );
+    }
+
+    return dirMeta;
   }
 
   public async registerFile(
@@ -89,105 +263,126 @@ class FileCatalog extends EventEmitter {
       this.networkImportedPaths.add(filePath);
     }
 
+    if (this.pathIndex.has(filePath)) {
+      const existingId = this.pathIndex.get(filePath);
+      if (existingId) return this.index.get(existingId) as FileMetadata;
+    }
+
     const [hash, stat] = await Promise.all([
       this.hasher.hashFile(filePath),
       fse.stat(filePath),
     ]);
 
+    const parentPath = path.dirname(filePath);
+    const rootPath = path.resolve(process.cwd(), 'files');
+
+    let parentId = '';
+
+    if (parentPath !== rootPath) {
+      parentId = this.pathIndex.get(parentPath) || '';
+
+      if (!parentId) {
+        console.warn(
+          `[Aviso] Pasta pai não encontrada no índice para o arquivo: ${filePath}`,
+        );
+      }
+    }
+
     if (this.hashIndex.has(hash)) {
       const existingId = this.hashIndex.get(hash);
 
-      if (!existingId) {
-        throw new Error('Falha durante o calculo  de hash');
+      if (!existingId) throw new Error('Falha durante o calculo de hash');
+
+      const existing = this.index.get(existingId) as FileMetadata;
+
+      if (!existing)
+        throw new Error('Falha: Hash existe mas arquivo sumiu do índice');
+
+      const currentAbsolutePath = this.buildPath(existing.id);
+      if (currentAbsolutePath !== filePath) {
+        // Futura lógica de atualização de parentId
       }
 
-      const existing = this.index.get(existingId);
-
-      if (!existing) {
-        throw new Error('Falha durante o calculo  de hash');
-      }
-
-      if (existing.path !== filePath) {
-        this.pathIndex.delete(existing.path);
-        existing.path = filePath;
-        existing.origin = origin;
-
-        this.index.set(existing.fileId, existing);
-        this.pathIndex.set(filePath, existing.fileId);
-      }
       return existing;
     }
 
-    const meta: FileMetadata = {
-      fileId: ulid(),
+    const fileMeta: FileMetadata = {
+      id: ulid(),
+      parentId: parentId,
+      type: 'file',
       name: path.basename(filePath, path.extname(filePath)),
       ext: path.extname(filePath),
       hash,
-      path: filePath,
+      size: stat.size,
+      privacy: 'public',
       isDownloaded: origin === 'local' ? 'not_downloaded' : 'downloaded',
       isSync: origin === 'local' ? 'unsynchronized' : 'synchronized',
-      privacy: 'public',
       origin,
-      size: stat.size,
     };
 
-    // if (origin === 'network') {
-    //   meta = {
-    //     ...meta,
-    //     isDownloaded: 'downloaded',
-    //     isSync: 'synchronized',
-    //   };
-    // }
+    if (parentId) {
+      const parentMeta = this.index.get(parentId);
 
-    this.index.set(meta.fileId, meta);
-    this.hashIndex.set(hash, meta.fileId);
-    this.pathIndex.set(meta.path, meta.fileId);
+      if (parentMeta && parentMeta.type === 'dir') {
+        parentMeta.childId.push(fileMeta.id);
+
+        this.index.set(parentId, parentMeta);
+      }
+    }
+
+    this.index.set(fileMeta.id, fileMeta);
+    this.fileIndex.set(fileMeta.id, fileMeta);
+    this.hashIndex.set(hash, fileMeta.id);
+    this.pathIndex.set(filePath, fileMeta.id);
+    this.parentIndex.set(fileMeta.id, parentId);
 
     const dataToSave = Array.from(this.index.values());
     const isSave = await this.storage.save(dataToSave);
 
     if (!isSave) {
-      throw new Error(`Falha em atualizar base de dados`);
-    }
-
-    return meta;
-  }
-
-  public async fetchServerFiles(): Promise<FileMetadata[]> {
-    return Array.from(this.index.values());
-  }
-
-  public async fetchFile(fileId: string): Promise<FileMetadata | null> {
-    return this.index.get(fileId) || null;
-  }
-
-  public async syncRegister(fileMetadata: FileMetadata): Promise<boolean> {
-    const existingMeta = this.index.get(fileMetadata.fileId);
-
-    if (!existingMeta) {
-      console.error(
-        `Arquivo com ID ${fileMetadata.fileId} não encontrado no índice.`,
+      throw new Error(
+        `Falha em atualizar base de dados ao salvar ${fileMeta.name}`,
       );
-      throw new Error(`Arquivo nao encontrado na base de dados`);
     }
 
-    const syncronizedFile: FileMetadata = {
-      ...fileMetadata,
-      isDownloaded: 'downloaded',
-      isSync: 'synchronized',
-    };
-
-    this.index.set(fileMetadata.fileId, syncronizedFile);
-
-    const dataToSave = Array.from(this.index.values());
-    const isSave = await this.storage.save(dataToSave);
-
-    if (!isSave) {
-      throw new Error(`Falha em atualizar base de dados`);
-    }
-
-    return true;
+    return fileMeta;
   }
+
+  // public async fetchServerFiles(): Promise<FileMetadata[]> {
+  //   return Array.from(this.index.values());
+  // }
+
+  // public async fetchFile(fileId: string): Promise<FileMetadata | null> {
+  //   return this.index.get(fileId) || null;
+  // }
+
+  // public async syncRegister(fileMetadata: FileMetadata): Promise<boolean> {
+  //   const existingMeta = this.index.get(fileMetadata.fileId);
+
+  //   if (!existingMeta) {
+  //     console.error(
+  //       `Arquivo com ID ${fileMetadata.fileId} não encontrado no índice.`,
+  //     );
+  //     throw new Error(`Arquivo nao encontrado na base de dados`);
+  //   }
+
+  //   const syncronizedFile: FileMetadata = {
+  //     ...fileMetadata,
+  //     isDownloaded: 'downloaded',
+  //     isSync: 'synchronized',
+  //   };
+
+  //   this.index.set(fileMetadata.fileId, syncronizedFile);
+
+  //   const dataToSave = Array.from(this.index.values());
+  //   const isSave = await this.storage.save(dataToSave);
+
+  //   if (!isSave) {
+  //     throw new Error(`Falha em atualizar base de dados`);
+  //   }
+
+  //   return true;
+  // }
 
   private writeLock: Promise<void> = Promise.resolve();
 
