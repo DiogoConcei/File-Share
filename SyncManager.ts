@@ -1,4 +1,3 @@
-import { FileMetadata } from './interfaces/fileMetadata.interfaces';
 import {
   PeerInfo,
   PeerState,
@@ -7,6 +6,7 @@ import {
 import { EventEmitter } from 'events';
 import path from 'path';
 import fse from 'fs-extra';
+import { DataPackage } from './interfaces/dataPackage.interface';
 
 enum Priority {
   HIGH = 0,
@@ -31,19 +31,16 @@ export default class SyncManager extends EventEmitter {
     [Priority.LOW]: [],
   };
 
-  // Mantém o estado em memória
   private syncState: { peers: Record<string, PeerSyncPersist> } = { peers: {} };
   private running = false;
   private writeLock: Promise<void> = Promise.resolve();
 
   async start() {
-    // Eventos de peers e arquivos
     this.on('peer:seen', (peer: PeerInfo) => this.peerSeen(peer));
-    this.on('file:added', (fileMeta: FileMetadata) => this.toSend(fileMeta));
+    this.on('node:added', (data: DataPackage) => this.toSend(data));
 
     this.announceTimer = setInterval(() => this.checkPeer(), 1000 * 5);
 
-    // Carrega o estado do disco para memória
     this.syncState = await this.loadSyncData();
   }
 
@@ -142,18 +139,16 @@ export default class SyncManager extends EventEmitter {
     };
   }
 
-  // Agendamento de envio de arquivos
-  private async toSend(fileMeta: FileMetadata) {
-    const toEnqueue: { peerId: string; fileMeta: FileMetadata }[] = [];
+  private async toSend(data: DataPackage) {
+    const toEnqueue: { peerId: string; data: DataPackage }[] = [];
 
     await this.withWriteLock(async () => {
       for (const [peerId, peerState] of this.peers) {
         const persisted = this.syncState.peers[peerId];
         if (!persisted) continue;
 
-        peerState.sync.queue.toSend.push(fileMeta);
-
-        toEnqueue.push({ peerId, fileMeta });
+        peerState.sync.queue.toSend.push(data);
+        toEnqueue.push({ peerId, data });
       }
 
       await this.persistSyncData(this.syncState);
@@ -161,7 +156,7 @@ export default class SyncManager extends EventEmitter {
 
     for (const job of toEnqueue) {
       this.enqueue(async () => {
-        this.emit('file:queued:toSend', job);
+        this.emit('node:queued:toSend', job);
       }, Priority.HIGH);
     }
   }

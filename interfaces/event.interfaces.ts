@@ -1,19 +1,19 @@
 import { DataPackage } from './dataPackage.interface';
 
 export interface AddedEvent {
-  fileMeta: DataPackage;
+  data: DataPackage;
   origin: 'local' | 'network';
   timeStamp: string;
 }
 
 export interface RemoveEvent {
-  fileMeta: DataPackage;
+  data: DataPackage;
   origin: 'local' | 'network';
   timeStamp: string;
 }
 
 export interface SyncEvent {
-  fileMeta: DataPackage;
+  data: DataPackage;
   origin: 'local' | 'network';
   timeStamp: string;
 }

@@ -84,7 +84,7 @@ class FileCatalog extends EventEmitter {
 
     watcher.on('addDir', (p) => this.queueEvent('dir', p));
     watcher.on('add', (p) => this.queueEvent('file', p));
-    watcher.on('unlink', (p) => this.onRemove(p));
+    // watcher.on('unlink', (p) => this.onRemove(p));
   }
 
   private queueEvent(type: 'dir' | 'file', itemPath: string) {
@@ -143,8 +143,8 @@ class FileCatalog extends EventEmitter {
         return;
       }
 
-      const dirMetadata = await this.limitHash(() => {
-        this.registerDir(dirPath, { origin: 'network' });
+      const dirMetadata: DirMetadata = await this.registerDir(dirPath, {
+        origin: 'local',
       });
 
       if (dirMetadata) {
@@ -154,6 +154,10 @@ class FileCatalog extends EventEmitter {
   }
 
   public async onAdd(filePath: string) {
+    if (path.extname(filePath) === '') {
+      return;
+    }
+
     return this.withWriteLock(async () => {
       if (this.networkImportedPaths.has(filePath)) {
         this.networkImportedPaths.delete(filePath);
@@ -180,7 +184,6 @@ class FileCatalog extends EventEmitter {
       this.networkImportedPaths.add(dirPath);
     }
 
-    // 1. Evita duplicidade se o SO disparar o evento duas vezes
     if (this.pathIndex.has(dirPath)) {
       const existingId = this.pathIndex.get(dirPath);
       if (existingId) {
@@ -188,13 +191,11 @@ class FileCatalog extends EventEmitter {
       }
     }
 
-    // 2. Descobrindo quem é o Pai
     const parentPath = path.dirname(dirPath);
     const rootPath = path.resolve(process.cwd(), 'files');
 
     let parentId = '';
 
-    // Se o pai não for a pasta raiz 'files', nós buscamos o ID dele no nosso tradutor
     if (parentPath !== rootPath) {
       parentId = this.pathIndex.get(parentPath) || '';
 
@@ -205,15 +206,12 @@ class FileCatalog extends EventEmitter {
       }
     }
 
-    // Usamos path.basename em vez de parsed.name.
-    // Motivo: Se uma pasta se chamar "v1.0", o path.parse divide em name:"v1" e ext:".0".
-    // O path.basename pega o nome da pasta inteiro corretamente.
     const dirMeta: DirMetadata = {
       id: ulid(),
       parentId: parentId,
       name: path.basename(dirPath),
       size: 0,
-      hash: '', // O hash nasce vazio, será montado depois pelos arquivos filhos
+      hash: '',
       childId: [],
       isDownloaded: origin === 'local' ? 'not_downloaded' : 'downloaded',
       isSync: origin === 'local' ? 'unsynchronized' : 'synchronized',
@@ -222,25 +220,21 @@ class FileCatalog extends EventEmitter {
       origin,
     };
 
-    // 3. Atualizando a pasta Pai (Adicionando este novo diretório aos filhos dela)
     if (parentId) {
       const parentMeta = this.index.get(parentId);
 
       if (parentMeta && parentMeta.type === 'dir') {
         parentMeta.childId.push(dirMeta.id);
 
-        // Atualiza o pai modificado na memória
         this.index.set(parentId, parentMeta);
         this.dirIndex.set(parentId, parentMeta);
       }
     }
 
-    // 4. Registrando o novo diretório nos índices globais
     this.index.set(dirMeta.id, dirMeta);
     this.dirIndex.set(dirMeta.id, dirMeta);
     this.pathIndex.set(dirPath, dirMeta.id);
 
-    // 5. Persistindo o "universo" inteiro no banco de dados JSON
     const dataToSave = Array.from(this.index.values());
     const isSave = await this.storage.save(dataToSave);
 
@@ -345,44 +339,67 @@ class FileCatalog extends EventEmitter {
       );
     }
 
+    await fse.move(filePath, path.join(rootPath, fileMeta.id));
+
     return fileMeta;
   }
 
-  // public async fetchServerFiles(): Promise<FileMetadata[]> {
-  //   return Array.from(this.index.values());
-  // }
+  public async fetchServerFiles(): Promise<DataPackage[]> {
+    return Array.from(this.index.values());
+  }
 
-  // public async fetchFile(fileId: string): Promise<FileMetadata | null> {
-  //   return this.index.get(fileId) || null;
-  // }
+  public async fetchFile(fileId: string): Promise<DataPackage | null> {
+    return this.index.get(fileId) || null;
+  }
 
-  // public async syncRegister(fileMetadata: FileMetadata): Promise<boolean> {
-  //   const existingMeta = this.index.get(fileMetadata.fileId);
+  public async syncRegister(fileMetadata: DataPackage): Promise<boolean> {
+    const existingMeta = this.index.get(fileMetadata.id);
 
-  //   if (!existingMeta) {
-  //     console.error(
-  //       `Arquivo com ID ${fileMetadata.fileId} não encontrado no índice.`,
-  //     );
-  //     throw new Error(`Arquivo nao encontrado na base de dados`);
-  //   }
+    const syncronizedPackage: DataPackage = {
+      ...fileMetadata,
+      isDownloaded: 'downloaded',
+      isSync: 'synchronized',
+    };
 
-  //   const syncronizedFile: FileMetadata = {
-  //     ...fileMetadata,
-  //     isDownloaded: 'downloaded',
-  //     isSync: 'synchronized',
-  //   };
+    if (!existingMeta) {
+      if (syncronizedPackage.parentId) {
+        const parentMeta = this.index.get(syncronizedPackage.parentId);
 
-  //   this.index.set(fileMetadata.fileId, syncronizedFile);
+        if (parentMeta && parentMeta.type === 'dir') {
+          if (!parentMeta.childId.includes(syncronizedPackage.id)) {
+            parentMeta.childId.push(syncronizedPackage.id);
+            this.index.set(parentMeta.id, parentMeta);
+          }
+        }
+      }
+    }
 
-  //   const dataToSave = Array.from(this.index.values());
-  //   const isSave = await this.storage.save(dataToSave);
+    this.index.set(syncronizedPackage.id, syncronizedPackage);
 
-  //   if (!isSave) {
-  //     throw new Error(`Falha em atualizar base de dados`);
-  //   }
+    if (syncronizedPackage.type === 'dir') {
+      this.dirIndex.set(
+        syncronizedPackage.id,
+        syncronizedPackage as DirMetadata,
+      );
+    } else {
+      this.fileIndex.set(
+        syncronizedPackage.id,
+        syncronizedPackage as FileMetadata,
+      );
+      this.hashIndex.set(syncronizedPackage.hash, syncronizedPackage.id);
+    }
 
-  //   return true;
-  // }
+    const dataToSave = Array.from(this.index.values());
+    const isSave = await this.storage.save(dataToSave);
+
+    if (!isSave) {
+      throw new Error(
+        `Falha em atualizar base de dados durante o syncRegister`,
+      );
+    }
+
+    return true;
+  }
 
   private writeLock: Promise<void> = Promise.resolve();
 
@@ -401,41 +418,41 @@ class FileCatalog extends EventEmitter {
     }
   }
 
-  private async onRemove(filePath: string) {
-    return this.withWriteLock(async () => {
-      const fileMeta = await this.unlinkFile(filePath);
-      if (fileMeta) {
-        this.emit('file:removed', fileMeta);
-      }
-    });
-  }
+  // private async onRemove(filePath: string) {
+  //   return this.withWriteLock(async () => {
+  //     const fileMeta = await this.unlinkFile(filePath);
+  //     if (fileMeta) {
+  //       this.emit('file:removed', fileMeta);
+  //     }
+  //   });
+  // }
 
-  private async unlinkFile(filePath: string): Promise<FileMetadata> {
-    const fileId = this.pathIndex.get(filePath);
+  // private async unlinkFile(filePath: string): Promise<FileMetadata> {
+  //   const fileId = this.pathIndex.get(filePath);
 
-    if (!fileId) {
-      throw new Error(`Falha em encontrar o arquivo ${filePath}`);
-    }
+  //   if (!fileId) {
+  //     throw new Error(`Falha em encontrar o arquivo ${filePath}`);
+  //   }
 
-    const metadata = this.index.get(fileId);
+  //   const metadata = this.index.get(fileId);
 
-    if (!metadata) {
-      throw new Error(`Falha em encontrar os metadados do arquivo ${filePath}`);
-    }
+  //   if (!metadata) {
+  //     throw new Error(`Falha em encontrar os metadados do arquivo ${filePath}`);
+  //   }
 
-    this.index.delete(fileId);
-    this.hashIndex.delete(metadata.hash);
-    this.pathIndex.delete(filePath);
+  //   this.index.delete(fileId);
+  //   this.hashIndex.delete(metadata.hash);
+  //   this.pathIndex.delete(filePath);
 
-    const dataToSave = Array.from(this.index.values());
-    const isSave = await this.storage.save(dataToSave);
+  //   const dataToSave = Array.from(this.index.values());
+  //   const isSave = await this.storage.save(dataToSave);
 
-    if (!isSave) {
-      throw new Error(`Falha em atualizar base de dados`);
-    }
+  //   if (!isSave) {
+  //     throw new Error(`Falha em atualizar base de dados`);
+  //   }
 
-    return metadata;
-  }
+  //   return metadata;
+  // }
 }
 
 export default FileCatalog;

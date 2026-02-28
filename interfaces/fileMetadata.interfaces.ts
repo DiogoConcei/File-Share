@@ -13,10 +13,12 @@ export interface FileMetadata {
 }
 
 export interface FilePackage {
-  fileid: string;
+  parentId: string;
+  id: string;
   name: string;
   ext: string;
   hash: string;
+  privacy: 'public' | 'private';
 }
 
 export interface DiffData {

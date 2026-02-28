@@ -7,7 +7,7 @@ import PeerApi from './PeerApi';
 import { AddedEvent } from './interfaces/event.interfaces';
 
 import dotenv from 'dotenv';
-import { FileMetadata } from './interfaces/fileMetadata.interfaces';
+import { DataPackage } from './interfaces/dataPackage.interface';
 
 dotenv.config({ path: './.env' });
 
@@ -31,10 +31,10 @@ async function main() {
     syncManager.emit('peer:seen', peer);
   });
 
-  Catalog.on('file:added', ({ fileMeta, origin }: AddedEvent) => {
+  Catalog.on('node:added', ({ data, origin }: AddedEvent) => {
     if (origin === 'network') return;
 
-    syncManager.emit('file:added', fileMeta);
+    syncManager.emit('node:added', data);
   });
 
   syncManager.on('peer:discovered', async (peer) => {
@@ -42,14 +42,8 @@ async function main() {
   });
 
   syncManager.on(
-    'file:queued:toSend',
-    async ({
-      peerId,
-      fileMeta,
-    }: {
-      peerId: string;
-      fileMeta: FileMetadata;
-    }) => {
+    'node:queued:toSend',
+    async ({ peerId, dataNode }: { peerId: string; dataNode: DataPackage }) => {
       const peer = syncManager.getPeer(peerId);
 
       if (!peer) {
@@ -61,7 +55,11 @@ async function main() {
       const api = new PeerApi(address, port);
 
       try {
-        await api.sendFile(fileMeta);
+        if (dataNode.type == 'file') {
+          await api.sendFile(dataNode);
+        } else {
+          await api.sendDir(dataNode);
+        }
 
         await syncManager.withWriteLock(async () => {
           const data = await syncManager.loadSyncData();
@@ -75,16 +73,16 @@ async function main() {
           }
 
           peerData.queue.toSend = peerData.queue.toSend.filter(
-            (file: FileMetadata) => file.fileId !== fileMeta.fileId,
+            (file: DataPackage) => file.id !== dataNode.id,
           );
 
           await syncManager.persistSyncData(data);
-          const isSave = await Catalog.syncRegister(fileMeta);
+          const isSave = await Catalog.syncRegister(dataNode);
 
           if (!isSave) throw new Error(`Falha em persistir dados`);
         });
       } catch (error) {
-        console.error(`[ERROR] Falha ao enviar o arquivo: ${fileMeta.fileId}`);
+        console.error(`[ERROR] Falha ao enviar o arquivo: ${dataNode.id}`);
         console.error(`[ERROR] ${String(error)}`);
       }
     },

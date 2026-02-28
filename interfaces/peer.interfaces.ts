@@ -1,4 +1,4 @@
-import { FileMetadata } from './fileMetadata.interfaces';
+import { DataPackage } from './dataPackage.interface';
 
 export interface PeerIdentity {
   peerId: string;
@@ -26,9 +26,9 @@ export interface PeerSyncPersist {
   port: number;
   lastSeen: number;
   queue: {
-    toSend: FileMetadata[];
-    toDelete: FileMetadata[];
-    toRequest: FileMetadata[];
+    toSend: DataPackage[];
+    toDelete: DataPackage[];
+    toRequest: DataPackage[];
   };
 }
 

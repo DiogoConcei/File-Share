@@ -1,9 +1,12 @@
 import axios from 'axios';
+import path from 'path';
 import Catalog from './providers/CatalogProvider';
 import HashService from './services/HashService';
 import StreamProcessor from './services/StreamProcessor';
 import { Readable } from 'stream';
 import { FileMetadata } from './interfaces/fileMetadata.interfaces';
+import { DirMetadata } from './interfaces/dirMetadata.interfaces';
+
 export default class PeerApi {
   private readonly streamProcessor: StreamProcessor = new StreamProcessor();
   private readonly hashService: HashService = new HashService();
@@ -18,10 +21,10 @@ export default class PeerApi {
 
   public async requestFile(file: FileMetadata) {
     console.log(
-      `[PEER API] requisitando arquivo ${file.fileId} de ${this.address}:${this.port}`,
+      `[PEER API] requisitando arquivo ${file.id} de ${this.address}:${this.port}`,
     );
 
-    const url = `http://${this.address}:${this.port}/${file.fileId}/download`;
+    const url = `http://${this.address}:${this.port}/${file.id}/download`;
 
     const response = await axios.get<Readable>(url, {
       responseType: 'stream',
@@ -61,21 +64,37 @@ export default class PeerApi {
 
   public async sendFile(file: FileMetadata) {
     console.log(
-      `[PEER API] enviando arquivo ${file.fileId} para ${this.address}:${this.port}`,
+      `[PEER API] enviando arquivo ${file.id} para ${this.address}:${this.port}`,
     );
 
-    const stream = await this.streamProcessor.getReadStream(file.path);
+    const filePath: string = path.join(process.cwd(), 'files', file.id);
 
-    await axios.post(`http://${this.address}:${this.port}/upload`, stream, {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        fileid: file.fileId,
-        name: file.name,
-        ext: file.ext,
-        hash: file.hash,
+    const stream = await this.streamProcessor.getReadStream(filePath);
+
+    await axios.post(
+      `http://${this.address}:${this.port}/v1/sync/file`,
+      stream,
+      {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          parentId: file.parentId,
+          fileid: file.id,
+          name: file.name,
+          ext: file.ext,
+          hash: file.hash,
+          privacy: file.privacy,
+        },
       },
-    });
+    );
 
     console.log('[PEER API] upload concluído');
+  }
+
+  public async sendDir(dir: DirMetadata) {
+    console.log(
+      `[PEER API] enviando a pasta ${dir.id} para ${this.address}:${this.port}`,
+    );
+
+    await axios.post(`http://${this.address}:${this.port}/v1/sync/dir`, dir);
   }
 }
